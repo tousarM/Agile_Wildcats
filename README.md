@@ -1,4 +1,4 @@
-# Product Development Management System (PDMS) Project Readme.md Guide
+# Product Development Management System (PDMS) Guide (Readme.md)
 
 Authors: Simon G.Dak ,Osvaldo Estrell, Tousar Mohammed, Wesley Nguyen
 
