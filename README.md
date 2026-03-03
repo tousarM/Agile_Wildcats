@@ -71,9 +71,44 @@ python manage.py createsuperuser
 python manage.py runserver
 ```
 
----
-
-## Routes (with `/pdms/` prefix)
+- ## Routes (with `/pdms/` prefix)
 
 - Home → `http://127.0.0.1:8000/pdms/`  
 - About → `http://127.0.0.1:8000/pdms/about/`  
+- Downloads → `http://127.0.0.1:8000/pdms/downloads/`  
+- Dashboard → `http://127.0.0.1:8000/pdms/dashboard/<user_id>/`  
+- Task detail → `http://127.0.0.1:8000/pdms/task/<task_id>/`  
+- API upload CSV → `http://127.0.0.1:8000/pdms/api/upload/csv/`  
+- Admin panel → `http://127.0.0.1:8000/admin/`  
+
+ Note:If you try `/about/` directly, you’ll get a 404 because all app routes are prefixed with `/pdms/`.
+
+---
+project_root/
+│   manage.py
+│   requirements.txt
+│   Dockerfile
+│   docker-compose.yml
+│   README.md
+│   .gitignore
+│
+├── PDMS/                # Project settings
+│   ├── settings.py
+│   ├── urls.py
+│   └── ...
+│
+├── pdms_app/            # Main app
+│   ├── models.py        # UserProfile, Team, Task, TaskFile
+│   ├── views.py         # Dashboard, file upload, exports
+│   ├── urls.py          # App routes
+│   └── templates/
+│       └── pdms_app/
+│           ├── home.html
+│           ├── about.html
+│           ├── download.html
+│           ├── dashboard.html
+│           └── task_detail.html
+└── templates/
+    └── base.html        # Global layout
+```
+##  Next Steps
