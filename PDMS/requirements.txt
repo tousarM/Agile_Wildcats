@@ -1,0 +1,26 @@
+# ================================
+# Requirements for PDMS Django Project
+# ================================
+# This file lists all Python packages needed
+# for development and production environments.
+# Install with: pip install -r requirements.txt
+# ================================
+
+# Core framework
+Django==6.0.3
+
+# WSGI HTTP Server for production
+gunicorn==21.2.0
+
+# Environment variable management
+django-environ==0.11.2
+python-dotenv==1.0.1
+
+# Optional: useful Django extensions
+django-crispy-forms==2.1
+
+# Testing and linting (recommended for dev)
+pytest==8.1.1
+pytest-django==4.8.0
+black==24.2.0
+flake8==7.0.0

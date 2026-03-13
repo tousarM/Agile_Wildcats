@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+
+{% block title %}My Tasks{% endblock %}
+
+{% block content %}
+<h2>My Tasks</h2>
+
+<form method="post" enctype="multipart/form-data">
+  {% csrf_token %}
+  <input type="text" name="title" placeholder="Task title" required>
+  <textarea name="description" placeholder="Task description"></textarea>
+  <label for="due_date">Due Date:</label>
+  <input type="date" id="due_date" name="due_date" title="Select the due date for the task">
+  <label for="attachment">Attach File:</label>
+  <input type="file" id="attachment" name="attachment">
+  <button type="submit" class="btn btn-primary">Add Task</button>
+</form>
+
+<hr>
+
+<ul>
+  {% for task in tasks %}
+    <li>
+      <strong>{{ task.title }}</strong> — {{ task.status }}<br>
+      {{ task.description }}<br>
+      Due: {{ task.due_date }}<br>
+      {% if task.attachment %}
+        <a href="{{ task.attachment.url }}" download>Download Attachment</a>
+      {% endif %}
+    </li>
+  {% empty %}
+    <li>No tasks yet.</li>
+  {% endfor %}
+</ul>
+{% endblock %}

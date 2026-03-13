@@ -1,0 +1,49 @@
+# Ignore Git & VCS
+.git
+.gitignore
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.pdb
+*.egg-info/
+*.egg
+
+# Django / SQLite
+db.sqlite3
+*.db
+*.sqlite3
+
+# Static & media files
+/static/
+staticfiles/
+media/
+
+# Migrations (ignore generated files, but keep __init__.py)
+*/migrations/__pycache__/
+*/migrations/*.py
+!*/migrations/__init__.py
+
+# Virtual environments
+venv/
+env/
+.venv/
+
+# Logs & coverage
+*.log
+coverage/
+htmlcov/
+*.cover
+*.coverage
+*.pytest_cache/
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Environment variables
+.env

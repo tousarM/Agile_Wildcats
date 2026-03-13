@@ -1,0 +1,15 @@
+# Docker Compose configuration for SFWE 407/507 Team 4 Agile Wildcats-PDMS Project
+services:
+  web:
+    build: .
+    command: gunicorn PDMS.wsgi:application --bind 0.0.0.0:8000
+    volumes:
+      - .:/app
+      - sqlite_data:/app/db.sqlite3   # persist SQLite database file
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+
+volumes:
+  sqlite_data:

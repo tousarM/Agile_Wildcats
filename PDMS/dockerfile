@@ -1,0 +1,32 @@
+# SFWE 407/507 Team 4 Agile Wildcats-PDMS Project
+# Use official Python slim image
+FROM python:3.14.2-slim
+
+# Environment variables
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    DJANGO_SETTINGS_MODULE=PDMS.settings
+
+# Set work directory
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Python dependencies (cached layer)
+COPY requirements.txt .
+RUN pip install --upgrade pip && pip install -r requirements.txt
+
+# Copy project files
+COPY . .
+
+# Collect static files (important for production)
+RUN python manage.py collectstatic --noinput
+
+# Expose port
+EXPOSE 8000
+
+# Default command (Gunicorn for production; can override in docker-compose)
+CMD ["gunicorn", "PDMS.wsgi:application", "--bind", "0.0.0.0:8000"]

@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+  <!-- Dashboard page for PDMS -->
+  <!-- Author: Simon Gawar Dak -->
+  <!-- Author: [Your Name] -->
+  <!-- Date: 2026-12-03 -->
+<head>
+  <meta charset="UTF-8">
+  <title>{% block title %}Dashboard{% endblock %}</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #f9f9f9;
+      margin: 0;
+      padding: 0;
+    }
+    header {
+      background: #000; /* black header */
+      color: #fff;
+      padding: 15px;
+      text-align: center;
+    }
+    nav {
+      background: #0056b3;
+      padding: 10px;
+      text-align: center;
+    }
+    nav a {
+      color: #fff;
+      margin: 0 15px;
+      text-decoration: none;
+      font-weight: bold;
+    }
+    nav a:hover {
+      text-decoration: underline;
+    }
+    .container {
+      padding: 30px;
+      max-width: 900px;
+      margin: auto;
+    }
+    footer {
+      background: #007bff;
+      color: #fff;
+      text-align: center;
+      padding: 10px;
+      position: fixed;
+      bottom: 0;
+      width: 100%;
+    }
+  </style>
+</head>
+<body>
+  <!-- Global header -->
+  <header>
+    <h1>Product Development Management System</h1>
+  </header>
+
+  <!-- Navigation bar -->
+  <nav>
+    <a href="{% url 'home' %}">Home</a>
+    <a href="{% url 'task_page' %}">Tasks</a>
+    <a href="/admin/">Admin</a>
+    <a href="{% url 'logout' %}">Logout</a>
+  </nav>
+
+  <!-- Main content area -->
+  <div class="container">
+    {% block content %}
+      <!-- Personalized welcome -->
+      <div class="text-center">
+        <h1>Welcome {{ name }}</h1>
+        <p class="lead">You are logged in as {{ role }} in team {{ team }}.</p>
+      </div>
+
+      <hr style="margin: 30px 0;">
+
+      <!-- PDMS introduction -->
+      <h2>Product Development Management System (PDMS)</h2>
+      <p>
+        The PDMS is designed to help agile teams manage tasks, track progress, and
+        collaborate effectively. It provides dashboards, document management, and
+        reporting tools so every role in the team can stay aligned.
+      </p>
+
+      <!-- Team roles overview -->
+      <h3>PDMS Team Roles</h3>
+      <p>
+        The system supports collaboration between:
+        Product Owner, Scrum Master, Requirements Manager, DevOps Manager,
+        Testing Manager, and UI/UX Manager.
+      </p>
+    {% endblock %}
+  </div>
+
+  <!-- Footer -->
+  <footer>
+    <p>&copy; {% now "Y" %} PDMS Project — Developed by Agile Wildcats Team for Class Project SFWE 507</p>
+  </footer>
+</body>
+</html>

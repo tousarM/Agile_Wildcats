@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+
+{% block title %}User Dashboard{% endblock %}
+
+{% block content %}
+<h2>{{ profile.name }}'s Dashboard</h2>
+<p><strong>Username:</strong> {{ profile.user.username }}</p>
+<p><strong>Email:</strong> {{ profile.user.email }}</p>
+<p><strong>Role:</strong> {{ profile.role }}</p>
+<p><strong>Team:</strong> {{ profile.team }}</p>
+{% if profile.contact_number %}
+<p><strong>Contact:</strong> {{ profile.contact_number }}</p>
+{% endif %}
+
+<hr>
+<h3>Assigned Tasks</h3>
+<ul>
+  {% for task in tasks %}
+    <li>
+      <strong>{{ task.title }}</strong> — {{ task.status }}<br>
+      {{ task.description }}<br>
+      Due: {{ task.due_date }}
+    </li>
+  {% empty %}
+    <li>No tasks assigned.</li>
+  {% endfor %}
+</ul>
+{% endblock %}
