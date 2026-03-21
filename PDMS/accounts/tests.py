@@ -1,62 +1,71 @@
-from django.test import TestCase
 from django.contrib.auth.models import User
-from .models import Task
+from django.test import TestCase
+from django.urls import reverse
 
-# Create your tests here
+from .models import Profile, Task
 
-# -----------------------------
-# Unit tests for PDMS accounts app
-# -----------------------------
 
-class UserModelTest(TestCase):
-    # Test that a user can be created successfully
-    def test_user_creation(self):
-        user = User.objects.create_user(username="dev1", password="pass123")
-        # Verify username is stored correctly
-        self.assertEqual(user.username, "dev1")
-        # Verify password hashing works
-        self.assertTrue(user.check_password("pass123"))
+class TaskAssignmentTests(TestCase):
+    def setUp(self):
+        self.manager = User.objects.create_user(username="manager1", password="pass123")
+        self.developer = User.objects.create_user(username="dev1", password="pass123")
+        self.other_developer = User.objects.create_user(username="dev2", password="pass123")
+        self.general_user = User.objects.create_user(username="member1", password="pass123")
 
-class TaskModelTest(TestCase):
-    # Test that a task can be created with all required fields
-    def test_task_creation(self):
-        # Create a user to assign the task to
-        user = User.objects.create_user(username="dev1", password="pass123")
+        Profile.objects.filter(user=self.manager).update(name="Manager One", role="Manager", team="Alpha")
+        Profile.objects.filter(user=self.developer).update(name="Dev One", role="Developer", team="Alpha")
+        Profile.objects.filter(user=self.other_developer).update(name="Dev Two", role="Developer", team="Alpha")
+        Profile.objects.filter(user=self.general_user).update(name="Member One", role="User", team="Alpha")
 
-        # Create a task with title, description, due_date, status, and assigned_to
-        task = Task.objects.create(
-            title="Test Task",
-            description="This is a sample task",
-            due_date="2026-03-20",
-            status="Backlog",
-            assigned_to=user
+    def test_manager_can_assign_task_to_user_with_any_role(self):
+        self.client.login(username="manager1", password="pass123")
+
+        response = self.client.post(
+            reverse("task_page"),
+            {
+                "action": "create_task",
+                "title": "Build API",
+                "description": "Create the assignment endpoint",
+                "due_date": "2026-03-25",
+                "status": "todo",
+                "assigned_to": self.general_user.id,
+            },
         )
 
-        # Verify task attributes are saved correctly
-        self.assertEqual(task.title, "Test Task")
-        self.assertEqual(task.status, "Backlog")
-        self.assertEqual(task.assigned_to.username, "dev1")
-        self.assertEqual(str(task.due_date), "2026-03-20")
+        self.assertRedirects(response, reverse("task_page"))
+        task = Task.objects.get(title="Build API")
+        self.assertEqual(task.assigned_to, self.general_user)
 
-class AuthViewsTest(TestCase):
-    # Setup: create a test user for login
-    def setUp(self):
-        self.user = User.objects.create_user(username="tester", password="pass123")
+    def test_manager_can_unassign_task(self):
+        task = Task.objects.create(
+            title="Fix Bug",
+            description="Investigate login issue",
+            status="todo",
+            assigned_to=self.developer,
+        )
+        self.client.login(username="manager1", password="pass123")
 
-    # Test login view with valid credentials
-    def test_login_view(self):
-        response = self.client.post("/login/", {"username": "tester", "password": "pass123"})
-        # Expect redirect (status 302) after successful login
-        self.assertEqual(response.status_code, 302)
+        response = self.client.post(
+            reverse("task_page"),
+            {
+                "action": "update_assignment",
+                "task_id": task.id,
+                "assigned_to": "",
+            },
+        )
 
-    # Test register view with valid data
-    def test_register_view(self):
-        # Include all required fields (username, email, password1, password2)
-        response = self.client.post("/register/", {
-            "username": "newuser",
-            "email": "newuser@example.com",   # add if required by your form
-            "password1": "strongpass123",
-            "password2": "strongpass123"
-        })
-        # Expect redirect (status 302) after successful registration
-        self.assertEqual(response.status_code, 302)
+        self.assertRedirects(response, reverse("task_page"))
+        task.refresh_from_db()
+        self.assertIsNone(task.assigned_to)
+
+    def test_developer_only_sees_their_assigned_tasks(self):
+        Task.objects.create(title="Visible Task", status="todo", assigned_to=self.developer)
+        Task.objects.create(title="Hidden Task", status="todo", assigned_to=self.other_developer)
+        Task.objects.create(title="Unassigned Task", status="todo", assigned_to=None)
+
+        self.client.login(username="dev1", password="pass123")
+        response = self.client.get(reverse("task_page"))
+
+        self.assertContains(response, "Visible Task")
+        self.assertNotContains(response, "Hidden Task")
+        self.assertNotContains(response, "Unassigned Task")
