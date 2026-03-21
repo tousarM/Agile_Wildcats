@@ -4,7 +4,7 @@ from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied
 from .forms import RegisterForm, TaskForm   # include TaskForm for tasks
-from .models import Profile, Task, TaskUpdate
+from .models import Profile, Task, TaskUpdate, Team
 
 
 def _get_profile(user):
@@ -30,19 +30,18 @@ def register(request):
             user = User.objects.create_user(
                 username=form.cleaned_data['username'],
                 email=form.cleaned_data['email'],
-                password=form.cleaned_data['password']
+                password=form.cleaned_data['password'],
             )
-            Profile.objects.update_or_create(
+            Profile.objects.create(
                 user=user,
-                defaults={
-                    'name': form.cleaned_data['name'],
-                    'role': form.cleaned_data['role'],
-                    'team': form.cleaned_data['team'],
-                },
+                name=form.cleaned_data.get('name', ''),
+                role='member',
+                team=None,
             )
             return redirect('login')
     else:
         form = RegisterForm()
+
     return render(request, 'register.html', {'form': form})
 
 
@@ -68,7 +67,7 @@ def welcome(request):
         'user': request.user,
         'name': profile.name,
         'role': profile.role,
-        'team': profile.team
+        # 'team': profile.team
     })
 
 
