@@ -25,7 +25,13 @@ class Task(models.Model):
         ],
         default='todo'
     )
-    assigned_to = models.ForeignKey(User, on_delete=models.CASCADE)
+    assigned_to = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="tasks",
+    )
 
     #  New field for file uploads
     attachment = models.FileField(

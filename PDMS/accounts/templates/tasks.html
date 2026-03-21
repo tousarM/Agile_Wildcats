@@ -1,19 +1,17 @@
 {% extends "base.html" %}
 
-{% block title %}My Tasks{% endblock %}
+{% block title %}Tasks{% endblock %}
 
 {% block content %}
-<h2>My Tasks</h2>
+<h2>{% if is_manager %}Task Assignment{% else %}My Tasks{% endif %}</h2>
 
 <form method="post" enctype="multipart/form-data">
   {% csrf_token %}
-  <input type="text" name="title" placeholder="Task title" required>
-  <textarea name="description" placeholder="Task description"></textarea>
-  <label for="due_date">Due Date:</label>
-  <input type="date" id="due_date" name="due_date" title="Select the due date for the task">
-  <label for="attachment">Attach File:</label>
-  <input type="file" id="attachment" name="attachment">
-  <button type="submit" class="btn btn-primary">Add Task</button>
+  <input type="hidden" name="action" value="create_task">
+  {{ form.as_p }}
+  <button type="submit" class="btn btn-primary">
+    {% if is_manager %}Create Task{% else %}Add Task{% endif %}
+  </button>
 </form>
 
 <hr>
@@ -21,11 +19,35 @@
 <ul>
   {% for task in tasks %}
     <li>
-      <strong>{{ task.title }}</strong> — {{ task.status }}<br>
+      <strong>{{ task.title }}</strong> - {{ task.get_status_display }}<br>
       {{ task.description }}<br>
       Due: {{ task.due_date }}<br>
+      Assigned to:
+      {% if task.assigned_to %}
+        {{ task.assigned_to.username }}
+      {% else %}
+        Unassigned
+      {% endif %}
+      <br>
       {% if task.attachment %}
-        <a href="{{ task.attachment.url }}" download>Download Attachment</a>
+        <a href="{{ task.attachment.url }}" download>Download Attachment</a><br>
+      {% endif %}
+      {% if is_manager %}
+        <form method="post" class="mt-2">
+          {% csrf_token %}
+          <input type="hidden" name="action" value="update_assignment">
+          <input type="hidden" name="task_id" value="{{ task.id }}">
+          <label for="assigned_to_{{ task.id }}">Assignment:</label>
+          <select id="assigned_to_{{ task.id }}" name="assigned_to">
+            <option value="">Unassigned</option>
+            {% for assignable_user in assignable_users %}
+              <option value="{{ assignable_user.id }}" {% if task.assigned_to_id == assignable_user.id %}selected{% endif %}>
+                {{ assignable_user.username }}
+              </option>
+            {% endfor %}
+          </select>
+          <button type="submit" class="btn btn-sm btn-outline-secondary">Save</button>
+        </form>
       {% endif %}
     </li>
   {% empty %}

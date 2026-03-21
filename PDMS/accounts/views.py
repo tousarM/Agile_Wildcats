@@ -1,9 +1,21 @@
-from django.shortcuts import render, redirect
+from django.shortcuts import get_object_or_404, render, redirect
 from django.contrib.auth.models import User
 from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.decorators import login_required
 from .forms import RegisterForm, TaskForm   # include TaskForm for tasks
 from .models import Profile, Task
+
+
+def _get_profile(user):
+    return Profile.objects.get(user=user)
+
+
+def _is_manager(profile):
+    return 'manager' in profile.role.lower()
+
+
+def _assignable_user_queryset():
+    return User.objects.filter(is_active=True).order_by('username')
 
 
 def register(request):
@@ -15,11 +27,13 @@ def register(request):
                 email=form.cleaned_data['email'],
                 password=form.cleaned_data['password']
             )
-            Profile.objects.create(
+            Profile.objects.update_or_create(
                 user=user,
-                name=form.cleaned_data['name'],
-                role=form.cleaned_data['role'],
-                team=form.cleaned_data['team']
+                defaults={
+                    'name': form.cleaned_data['name'],
+                    'role': form.cleaned_data['role'],
+                    'team': form.cleaned_data['team'],
+                },
             )
             return redirect('login')
     else:
@@ -44,7 +58,7 @@ def login_view(request):
 @login_required(login_url='login')
 def welcome(request):
     # Treat welcome as the dashboard
-    profile = Profile.objects.get(user=request.user)
+    profile = _get_profile(request.user)
     return render(request, 'welcome.html', {
         'user': request.user,
         'name': profile.name,
@@ -55,24 +69,49 @@ def welcome(request):
 
 @login_required(login_url='login')
 def task_page(request):
+    profile = _get_profile(request.user)
+    is_manager = _is_manager(profile)
+    assignable_users = _assignable_user_queryset()
+
     if request.method == 'POST':
-        form = TaskForm(request.POST, request.FILES)  # handle file uploads
+        if request.POST.get('action') == 'update_assignment' and is_manager:
+            task = get_object_or_404(Task, pk=request.POST.get('task_id'))
+            assigned_to_id = request.POST.get('assigned_to')
+            task.assigned_to = assignable_users.filter(pk=assigned_to_id).first() if assigned_to_id else None
+            task.save(update_fields=['assigned_to'])
+            return redirect('task_page')
+
+        form = TaskForm(
+            request.POST,
+            request.FILES,
+            can_assign=is_manager,
+            assignable_users=assignable_users,
+        )
         if form.is_valid():
             task = form.save(commit=False)
-            task.assigned_to = request.user
+            if not is_manager:
+                task.assigned_to = request.user
             task.save()
             return redirect('task_page')
     else:
-        form = TaskForm()
+        form = TaskForm(can_assign=is_manager, assignable_users=assignable_users)
 
-    tasks = Task.objects.filter(assigned_to=request.user)
-    return render(request, 'tasks.html', {'form': form, 'tasks': tasks})
+    tasks = Task.objects.select_related('assigned_to')
+    if not is_manager:
+        tasks = tasks.filter(assigned_to=request.user)
+
+    return render(request, 'tasks.html', {
+        'form': form,
+        'tasks': tasks.order_by('due_date', 'title'),
+        'is_manager': is_manager,
+        'assignable_users': assignable_users,
+    })
 
 
 @login_required(login_url='login')
 def profile_dashboard(request):
     # Full user profile dashboard
-    profile = Profile.objects.get(user=request.user)
+    profile = _get_profile(request.user)
     tasks = Task.objects.filter(assigned_to=request.user)
 
     return render(request, "profile_dashboard.html", {
