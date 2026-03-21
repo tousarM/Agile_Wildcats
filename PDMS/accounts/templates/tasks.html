@@ -16,12 +16,13 @@
 
 <hr>
 
-<ul>
+<ul class="list-unstyled">
   {% for task in tasks %}
-    <li>
-      <strong>{{ task.title }}</strong> - {{ task.get_status_display }}<br>
+    <li class="mb-4 p-3 border rounded bg-white">
+      <strong>{{ task.title }}</strong><br>
+      Status: {{ task.get_status_display }}<br>
       {{ task.description }}<br>
-      Due: {{ task.due_date }}<br>
+      Due: {{ task.due_date|default:"No due date" }}<br>
       Assigned to:
       {% if task.assigned_to %}
         {{ task.assigned_to.username }}
@@ -29,16 +30,18 @@
         Unassigned
       {% endif %}
       <br>
+      Last updated: {{ task.updated_at|date:"M d, Y g:i A" }}<br>
       {% if task.attachment %}
         <a href="{{ task.attachment.url }}" download>Download Attachment</a><br>
       {% endif %}
+
       {% if is_manager %}
-        <form method="post" class="mt-2">
+        <form method="post" class="mt-3">
           {% csrf_token %}
           <input type="hidden" name="action" value="update_assignment">
           <input type="hidden" name="task_id" value="{{ task.id }}">
           <label for="assigned_to_{{ task.id }}">Assignment:</label>
-          <select id="assigned_to_{{ task.id }}" name="assigned_to">
+          <select id="assigned_to_{{ task.id }}" name="assigned_to" class="form-select mb-2">
             <option value="">Unassigned</option>
             {% for assignable_user in assignable_users %}
               <option value="{{ assignable_user.id }}" {% if task.assigned_to_id == assignable_user.id %}selected{% endif %}>
@@ -46,9 +49,82 @@
               </option>
             {% endfor %}
           </select>
-          <button type="submit" class="btn btn-sm btn-outline-secondary">Save</button>
+          <button type="submit" class="btn btn-sm btn-outline-secondary">Save Assignment</button>
         </form>
       {% endif %}
+
+      {% if is_manager or task.assigned_to_id == current_user_id %}
+        <form method="post" enctype="multipart/form-data" class="mt-3">
+          {% csrf_token %}
+          <input type="hidden" name="action" value="update_progress">
+          <input type="hidden" name="task_id" value="{{ task.id }}">
+          <label for="status_{{ task.id }}">Update Status:</label>
+          <select id="status_{{ task.id }}" name="status" class="form-select mb-2">
+            {% for status_value, status_label in status_choices %}
+              <option value="{{ status_value }}" {% if task.status == status_value %}selected{% endif %}>
+                {{ status_label }}
+              </option>
+            {% endfor %}
+          </select>
+          <label for="note_{{ task.id }}">Progress Note:</label>
+          <textarea id="note_{{ task.id }}" name="note" class="form-control mb-2" rows="3" placeholder="Share what changed, blockers, or next steps"></textarea>
+          <label for="attachment_{{ task.id }}">Progress Attachment:</label>
+          <input id="attachment_{{ task.id }}" type="file" name="attachment" class="form-control mb-2">
+          <button type="submit" class="btn btn-sm btn-primary">Save Progress</button>
+        </form>
+      {% endif %}
+
+      <div class="mt-3">
+        {% with updates=task.updates.all %}
+          {% if updates %}
+            <strong>Discussion & Activity</strong>
+            <div class="mt-2">
+              {% for update in updates %}
+                <div class="mb-3">
+                  <div>{{ update.created_at|date:"M d, Y g:i A" }} - Updates by {{ update.actor_name }}</div>
+                  <div class="ms-3">
+                    {% if update.has_status_line %}
+                      <div>
+                        Status:
+                        {% if update.previous_status_display %}
+                          <del class="text-muted">{{ update.previous_status_display }}</del> →
+                        {% endif %}
+                        {{ update.get_status_display }}
+                      </div>
+                    {% endif %}
+                    {% if update.note_detail %}
+                      <div>Note: {{ update.note_detail }}</div>
+                    {% endif %}
+                    {% if update.has_attachment_line %}
+                      <div>
+                        Attachment:
+                        <a href="{{ update.attachment.url }}" download>{{ update.attachment_name }}</a>
+                      </div>
+                    {% endif %}
+                    {% if update.has_assignment_line %}
+                      <div>
+                        Assignment:
+                        {% if update.previous_assignee %}
+                          <del class="text-muted">{{ update.previous_assignee_display }}</del>
+                        {% else %}
+                          {{ update.previous_assignee_display }}
+                        {% endif %}
+                        →
+                        {{ update.current_assignee_display }}.
+                      </div>
+                    {% endif %}
+                    {% if update.activity_detail %}
+                      <div>Activity: {{ update.activity_detail }}</div>
+                    {% endif %}
+                  </div>
+                </div>
+              {% endfor %}
+            </div>
+          {% else %}
+            <span>No discussion or activity yet.</span>
+          {% endif %}
+        {% endwith %}
+      </div>
     </li>
   {% empty %}
     <li>No tasks yet.</li>

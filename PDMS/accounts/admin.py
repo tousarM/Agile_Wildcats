@@ -3,7 +3,7 @@ from django.contrib import admin
 # Register your models here.
 from django.contrib import admin
 from django.utils.html import format_html
-from .models import Profile, Task
+from .models import Profile, Task, TaskUpdate
 
 @admin.register(Profile)
 class ProfileAdmin(admin.ModelAdmin):
@@ -12,8 +12,8 @@ class ProfileAdmin(admin.ModelAdmin):
 
 @admin.register(Task)
 class TaskAdmin(admin.ModelAdmin):
-    list_display = ('title', 'colored_status', 'due_date', 'assigned_to')
-    list_filter = ('status', 'due_date')
+    list_display = ('title', 'colored_status', 'due_date', 'assigned_to', 'updated_at')
+    list_filter = ('status', 'due_date', 'updated_at')
     search_fields = ('title', 'description')
 
     def colored_status(self, obj):
@@ -29,3 +29,10 @@ class TaskAdmin(admin.ModelAdmin):
         )
     colored_status.admin_order_field = 'status'
     colored_status.short_description = 'Status'
+
+
+@admin.register(TaskUpdate)
+class TaskUpdateAdmin(admin.ModelAdmin):
+    list_display = ('task', 'author', 'status', 'created_at')
+    list_filter = ('status', 'created_at')
+    search_fields = ('task__title', 'note', 'author__username')
