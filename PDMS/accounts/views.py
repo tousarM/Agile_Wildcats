@@ -15,9 +15,6 @@ def _is_manager(profile):
     return 'manager' in profile.role.lower()
 
 
-def _assignable_user_queryset():
-    return User.objects.filter(is_active=True).order_by('username')
-
 
 def _can_update_task(user, is_manager, task):
     return is_manager or task.assigned_to_id == user.id
@@ -78,7 +75,13 @@ def welcome(request):
 def task_page(request):
     profile = _get_profile(request.user)
     is_manager = _is_manager(profile)
-    assignable_users = _assignable_user_queryset()
+
+    if not profile.team:
+        return render(request, 'tasks.html', {'no_team': True})
+
+    team = profile.team
+
+    assignable_users = User.objects.filter(profile__team=team, is_active=True).order_by('username')
 
     if request.method == 'POST':
         action = request.POST.get('action')
@@ -153,6 +156,7 @@ def task_page(request):
         )
         if form.is_valid():
             task = form.save(commit=False)
+            task.team = team
             if not is_manager:
                 task.assigned_to = request.user
             task.save()
@@ -184,7 +188,7 @@ def task_page(request):
     else:
         form = TaskForm(can_assign=is_manager, assignable_users=assignable_users)
 
-    tasks = Task.objects.select_related('assigned_to').prefetch_related('updates__author')
+    tasks = Task.objects.filter(team=team).select_related('assigned_to').prefetch_related('updates__author')
     if not is_manager:
         tasks = tasks.filter(assigned_to=request.user)
 
@@ -246,6 +250,7 @@ def team_page(request):
 
     team = profile.team
     members = Profile.objects.filter(team=team).select_related('user')
+    tasks = Task.objects.filter(team=team).select_related('assigned_to').order_by('status', 'due_date')
     invite_form = None
     invite_error = None
 
@@ -275,6 +280,7 @@ def team_page(request):
     return render(request, 'team_page.html', {
         'team': team,
         'members': members,
+        'tasks': tasks,
         'invite_form': invite_form,
         'invite_error': invite_error,
         'is_manager': profile.role == 'manager',
@@ -298,4 +304,53 @@ def reject_invite(request, invite_id):
     invite = get_object_or_404(TeamInvite, id=invite_id, recipient=request.user, status='pending')
     invite.status = 'rejected'
     invite.save()
+    return redirect('home')
+
+@login_required
+def remove_member(request, user_id):
+    profile = request.user.profile
+    if profile.role != 'manager':
+        raise PermissionDenied
+
+    target = get_object_or_404(Profile, user_id=user_id, team=profile.team)
+    if target.user == request.user:
+        raise PermissionDenied
+
+    target.team = None
+    target.role = 'member'
+    target.save()
+    return redirect('team_page')
+
+
+@login_required
+def leave_team(request):
+    profile = request.user.profile
+    if not profile.team:
+        return redirect('home')
+    if profile.role == 'manager':
+        raise PermissionDenied
+
+    profile.team = None
+    profile.save()
+    return redirect('home')
+
+
+@login_required
+def delete_team(request):
+    profile = request.user.profile
+    if profile.role != 'manager':
+        raise PermissionDenied
+
+    team = profile.team
+    if not team:
+        return redirect('home')
+
+    member_count = Profile.objects.filter(team=team).count()
+    if member_count > 1:
+        raise PermissionDenied
+
+    profile.team = None
+    profile.role = 'member'
+    profile.save()
+    team.delete()
     return redirect('home')

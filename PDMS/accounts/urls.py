@@ -14,5 +14,7 @@ urlpatterns = [
     path('team/create/', views.create_team, name='create_team'),
     path('invite/accept/<uuid:invite_id>/', views.accept_invite, name='accept_invite'),
     path('invite/reject/<uuid:invite_id>/', views.reject_invite, name='reject_invite'),
-
+    path('team/remove/<int:user_id>/', views.remove_member, name='remove_member'),
+    path('team/leave/', views.leave_team, name='leave_team'),
+    path('team/delete/', views.delete_team, name='delete_team'),
 ]

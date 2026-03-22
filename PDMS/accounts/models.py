@@ -48,6 +48,9 @@ class Task(models.Model):
         blank=True,
         related_name="tasks",
     )
+    team = models.ForeignKey(
+        'Team', null=True, blank=True, on_delete=models.SET_NULL, related_name='tasks'
+    )
 
     #  New field for file uploads
     attachment = models.FileField(
