@@ -221,9 +221,23 @@ def logout_view(request):
 
 def forgot_password(request):
     if request.method == 'POST':
+        username = request.POST.get('username')
         email = request.POST.get('email')
-        # Mohammed will add logic to handle password reset
+        old_password = request.POST.get('old_password')
+        new_password = request.POST.get('new_password')
+
+        try:
+            user = User.objects.get(username=username, email=email)
+        except User.DoesNotExist:
+            return render(request, 'forgot_password.html', {'error': 'No account matches that username and email.'})
+
+        if not user.check_password(old_password):
+            return render(request, 'forgot_password.html', {'error': 'Current password is incorrect.'})
+
+        user.set_password(new_password)
+        user.save()
         return redirect('login')
+
     return render(request, 'forgot_password.html')
 
 @login_required
