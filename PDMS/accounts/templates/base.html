@@ -14,9 +14,34 @@
   <style>
     body {
       font-family: Arial, sans-serif;
-      background: #e0e0e0; /* grey background */
+      background: #f9f9f9;
       margin: 0;
       padding: 0;
+    }
+    header {
+      background: #000; /* black header */
+      color: #fff;
+      padding: 15px;
+      text-align: center;
+    }
+    nav {
+      background: #0056b3;
+      padding: 10px;
+      text-align: center;
+    }
+    nav a {
+      color: #fff;
+      margin: 0 15px;
+      text-decoration: none;
+      font-weight: bold;
+    }
+    nav a:hover {
+      text-decoration: underline;
+    }
+    .container {
+      padding: 30px;
+      max-width: 900px;
+      margin: auto;
     }
     footer {
       background: #007bff;
@@ -30,16 +55,22 @@
   </style>
 </head>
 <body>
-  <!-- Navbar -->
-  <nav class="navbar navbar-dark bg-dark">
-    <div class="container">
-      <span class="navbar-brand">Agile Wildcats</span>
-      <div>
-        <a href="{% url 'home' %}" class="nav-link d-inline text-white">Home</a>
-        <a href="{% url 'task_page' %}" class="nav-link d-inline text-white">Tasks</a>
-        <a href="/admin/" class="nav-link d-inline text-white">Admin</a>
-      </div>
-    </div>
+  <!-- Global header -->
+  <header>
+    <h1>PDMS-Agile Wildcats Project</h1>
+  </header>
+
+  <!-- Navigation bar -->
+  <nav>
+    <a href="{% url 'home' %}">Home</a>
+    {% if request.user.profile.team %}
+      <a href="{% url 'task_page' %}">Tasks</a>
+      <a href="{% url 'team_page' %}">Team</a>
+    {% else %}
+      <a style="color: #7a9cc7; cursor: default; pointer-events: none;">Tasks</a>
+      <a style="color: #7a9cc7; cursor: default; pointer-events: none;">Team</a>
+    {% endif %}
+    <a href="{% url 'logout' %}">Logout</a>
   </nav>
 
   <!-- Main content -->
