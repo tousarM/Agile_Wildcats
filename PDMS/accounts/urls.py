@@ -10,6 +10,9 @@ urlpatterns = [
     path("forgot-password/", views.forgot_password, name="forgot_password"),
     path("tasks/", views.task_page, name="task_page"),   # <-- NEW added module
     path("dashboard/", views.profile_dashboard, name="profile_dashboard"), # <-- NEW added module
+    path('team/', views.team_page, name='team_page'),
+    path('team/create/', views.create_team, name='create_team'),
+    path('invite/accept/<uuid:invite_id>/', views.accept_invite, name='accept_invite'),
+    path('invite/reject/<uuid:invite_id>/', views.reject_invite, name='reject_invite'),
 
 ]
-

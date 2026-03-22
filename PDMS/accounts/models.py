@@ -1,17 +1,30 @@
+import uuid
 from django.db import models
 from django.contrib.auth.models import User
 from pathlib import PurePath
 
-class Profile(models.Model):
-    user = models.OneToOneField(User, on_delete=models.CASCADE)
-    name = models.CharField(max_length=100, blank=True)
-    role = models.CharField(max_length=100)
-    team = models.CharField(max_length=100)
-    contact_number = models.CharField(max_length=20, blank=True)  # optional
+class Team(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    name = models.CharField(max_length=100, unique=True)
+    created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
-        return self.name or self.user.username
+        return self.name
 
+class Profile(models.Model):
+    ROLE_CHOICES = [
+        ('member', 'Member'),
+        ('manager', 'Manager'),
+    ]
+
+    user = models.OneToOneField(User, on_delete=models.CASCADE)
+    name = models.CharField(max_length=100, blank=True)
+    email = models.EmailField(blank=True)
+    role = models.CharField(max_length=20, choices=ROLE_CHOICES, default='member')
+    team = models.ForeignKey(Team, null=True, blank=True, on_delete=models.SET_NULL)
+
+    def __str__(self):
+        return self.user.username
 
 class Task(models.Model):
     STATUS_CHOICES = [
@@ -145,3 +158,23 @@ class TaskUpdate(models.Model):
         if not self.attachment:
             return ""
         return PurePath(self.attachment.name).name
+
+class TeamInvite(models.Model):
+    STATUS_CHOICES = [
+        ('pending', 'Pending'),
+        ('accepted', 'Accepted'),
+        ('rejected', 'Rejected'),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    team = models.ForeignKey(Team, on_delete=models.CASCADE, related_name='invites')
+    sender = models.ForeignKey(User, on_delete=models.CASCADE, related_name='sent_invites')
+    recipient = models.ForeignKey(User, on_delete=models.CASCADE, related_name='received_invites')
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='pending')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ('team', 'recipient')
+
+    def __str__(self):
+        return f"{self.sender} → {self.recipient} ({self.team.name})"

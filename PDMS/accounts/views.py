@@ -3,8 +3,8 @@ from django.contrib.auth.models import User
 from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied
-from .forms import RegisterForm, TaskForm   # include TaskForm for tasks
-from .models import Profile, Task, TaskUpdate, Team
+from .forms import RegisterForm, TaskForm, CreateTeamForm, InviteForm   # include TaskForm for tasks
+from .models import Profile, Task, TaskUpdate, Team, TeamInvite
 
 
 def _get_profile(user):
@@ -38,7 +38,8 @@ def register(request):
                 role='member',
                 team=None,
             )
-            return redirect('login')
+            login(request, user)
+            return redirect('welcome')
     else:
         form = RegisterForm()
 
@@ -61,13 +62,15 @@ def login_view(request):
 
 @login_required(login_url='login')
 def welcome(request):
-    # Treat welcome as the dashboard
-    profile = _get_profile(request.user)
+    profile = request.user.profile
+    pending_invites = TeamInvite.objects.filter(
+        recipient=request.user, status='pending'
+    ).select_related('team', 'sender')
     return render(request, 'welcome.html', {
-        'user': request.user,
-        'name': profile.name,
+        'name': profile.name or request.user.username,
         'role': profile.role,
-        # 'team': profile.team
+        'team': profile.team,
+        'pending_invites': pending_invites,
     })
 
 
@@ -218,3 +221,81 @@ def forgot_password(request):
         # Mohammed will add logic to handle password reset
         return redirect('login')
     return render(request, 'forgot_password.html')
+
+@login_required
+def create_team(request):
+    if request.method == 'POST':
+        form = CreateTeamForm(request.POST)
+        if form.is_valid():
+            team = Team.objects.create(name=form.cleaned_data['name'])
+            profile = request.user.profile
+            profile.team = team
+            profile.role = 'manager'
+            profile.save()
+            return redirect('team_page')
+    else:
+        form = CreateTeamForm()
+    return render(request, 'create_team.html', {'form': form})
+
+
+@login_required
+def team_page(request):
+    profile = request.user.profile
+    if not profile.team:
+        return redirect('home')
+
+    team = profile.team
+    members = Profile.objects.filter(team=team).select_related('user')
+    invite_form = None
+    invite_error = None
+
+    if profile.role == 'manager':
+        if request.method == 'POST':
+            invite_form = InviteForm(request.POST)
+            if invite_form.is_valid():
+                username = invite_form.cleaned_data['username']
+                recipient = User.objects.get(username=username)
+                recipient_profile = recipient.profile
+
+                if recipient_profile.team == team:
+                    invite_error = "That user is already in your team."
+                elif TeamInvite.objects.filter(team=team, recipient=recipient, status='pending').exists():
+                    invite_error = "That user already has a pending invite."
+                else:
+                    TeamInvite.objects.create(
+                        team=team,
+                        sender=request.user,
+                        recipient=recipient,
+                    )
+                    invite_error = None
+                    invite_form = InviteForm()
+        else:
+            invite_form = InviteForm()
+
+    return render(request, 'team_page.html', {
+        'team': team,
+        'members': members,
+        'invite_form': invite_form,
+        'invite_error': invite_error,
+        'is_manager': profile.role == 'manager',
+    })
+
+
+@login_required
+def accept_invite(request, invite_id):
+    invite = get_object_or_404(TeamInvite, id=invite_id, recipient=request.user, status='pending')
+    profile = request.user.profile
+    profile.team = invite.team
+    profile.role = 'member'
+    profile.save()
+    invite.status = 'accepted'
+    invite.save()
+    return redirect('team_page')
+
+
+@login_required
+def reject_invite(request, invite_id):
+    invite = get_object_or_404(TeamInvite, id=invite_id, recipient=request.user, status='pending')
+    invite.status = 'rejected'
+    invite.save()
+    return redirect('home')
