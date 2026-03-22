@@ -62,3 +62,6 @@ Thumbs.db         # Windows thumbnail cache
 *.nix
 .envrc
 .direnv
+
+__pycache__
+*.sqlite3

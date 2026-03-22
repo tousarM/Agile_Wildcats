@@ -59,7 +59,10 @@ def login_view(request):
 
 @login_required(login_url='login')
 def welcome(request):
-    profile = request.user.profile
+    profile, _ = Profile.objects.get_or_create(
+        user=request.user,
+        defaults={'role': 'member'}
+    )
     pending_invites = TeamInvite.objects.filter(
         recipient=request.user, status='pending'
     ).select_related('team', 'sender')
