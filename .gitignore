@@ -13,9 +13,11 @@ __pycache__/
 db.sqlite3
 *.db
 *.sqlite3
-/media/
-staticfiles/        # collected static files
-/static/            # optional: if you generate static here
+
+# Uploaded media files and static files
+/PDMS/media/
+staticfiles/
+/static/
 
 # Migrations (ignore generated files, but keep __init__.py)
 */migrations/__pycache__/
