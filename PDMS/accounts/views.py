@@ -3,8 +3,8 @@ from django.contrib.auth.models import User
 from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied
-from .forms import RegisterForm, TaskForm   # include TaskForm for tasks
-from .models import Profile, Task, TaskUpdate
+from .forms import RegisterForm, TaskForm, CreateTeamForm, InviteForm   # include TaskForm for tasks
+from .models import Profile, Task, TaskUpdate, Team, TeamInvite
 
 
 def _get_profile(user):
@@ -14,9 +14,6 @@ def _get_profile(user):
 def _is_manager(profile):
     return 'manager' in profile.role.lower()
 
-
-def _assignable_user_queryset():
-    return User.objects.filter(is_active=True).order_by('username')
 
 
 def _can_update_task(user, is_manager, task):
@@ -30,19 +27,19 @@ def register(request):
             user = User.objects.create_user(
                 username=form.cleaned_data['username'],
                 email=form.cleaned_data['email'],
-                password=form.cleaned_data['password']
+                password=form.cleaned_data['password'],
             )
-            Profile.objects.update_or_create(
+            Profile.objects.create(
                 user=user,
-                defaults={
-                    'name': form.cleaned_data['name'],
-                    'role': form.cleaned_data['role'],
-                    'team': form.cleaned_data['team'],
-                },
+                name=form.cleaned_data.get('name', ''),
+                role='member',
+                team=None,
             )
-            return redirect('login')
+            login(request, user)
+            return redirect('welcome')
     else:
         form = RegisterForm()
+
     return render(request, 'register.html', {'form': form})
 
 
@@ -62,13 +59,18 @@ def login_view(request):
 
 @login_required(login_url='login')
 def welcome(request):
-    # Treat welcome as the dashboard
-    profile = _get_profile(request.user)
+    profile, _ = Profile.objects.get_or_create(
+        user=request.user,
+        defaults={'role': 'member'}
+    )
+    pending_invites = TeamInvite.objects.filter(
+        recipient=request.user, status='pending'
+    ).select_related('team', 'sender')
     return render(request, 'welcome.html', {
-        'user': request.user,
-        'name': profile.name,
+        'name': profile.name or request.user.username,
         'role': profile.role,
-        'team': profile.team
+        'team': profile.team,
+        'pending_invites': pending_invites,
     })
 
 
@@ -76,7 +78,13 @@ def welcome(request):
 def task_page(request):
     profile = _get_profile(request.user)
     is_manager = _is_manager(profile)
-    assignable_users = _assignable_user_queryset()
+
+    if not profile.team:
+        return render(request, 'tasks.html', {'no_team': True})
+
+    team = profile.team
+
+    assignable_users = User.objects.filter(profile__team=team, is_active=True).order_by('username')
 
     if request.method == 'POST':
         action = request.POST.get('action')
@@ -151,6 +159,7 @@ def task_page(request):
         )
         if form.is_valid():
             task = form.save(commit=False)
+            task.team = team
             if not is_manager:
                 task.assigned_to = request.user
             task.save()
@@ -182,7 +191,7 @@ def task_page(request):
     else:
         form = TaskForm(can_assign=is_manager, assignable_users=assignable_users)
 
-    tasks = Task.objects.select_related('assigned_to').prefetch_related('updates__author')
+    tasks = Task.objects.filter(team=team).select_related('assigned_to').prefetch_related('updates__author')
     if not is_manager:
         tasks = tasks.filter(assigned_to=request.user)
 
@@ -233,3 +242,132 @@ def forgot_password(request):
         return redirect('login')
 
     return render(request, 'forgot_password.html')
+
+@login_required
+def create_team(request):
+    if request.method == 'POST':
+        form = CreateTeamForm(request.POST)
+        if form.is_valid():
+            team = Team.objects.create(name=form.cleaned_data['name'])
+            profile = request.user.profile
+            profile.team = team
+            profile.role = 'manager'
+            profile.save()
+            return redirect('team_page')
+    else:
+        form = CreateTeamForm()
+    return render(request, 'create_team.html', {'form': form})
+
+
+@login_required
+def team_page(request):
+    profile = request.user.profile
+    if not profile.team:
+        return redirect('home')
+
+    team = profile.team
+    members = Profile.objects.filter(team=team).select_related('user')
+    tasks = Task.objects.filter(team=team).select_related('assigned_to').order_by('status', 'due_date')
+    invite_form = None
+    invite_error = None
+
+    if profile.role == 'manager':
+        if request.method == 'POST':
+            invite_form = InviteForm(request.POST)
+            if invite_form.is_valid():
+                username = invite_form.cleaned_data['username']
+                recipient = User.objects.get(username=username)
+                recipient_profile = recipient.profile
+
+                if recipient_profile.team == team:
+                    invite_error = "That user is already in your team."
+                elif TeamInvite.objects.filter(team=team, recipient=recipient, status='pending').exists():
+                    invite_error = "That user already has a pending invite."
+                else:
+                    TeamInvite.objects.create(
+                        team=team,
+                        sender=request.user,
+                        recipient=recipient,
+                    )
+                    invite_error = None
+                    invite_form = InviteForm()
+        else:
+            invite_form = InviteForm()
+
+    return render(request, 'team_page.html', {
+        'team': team,
+        'members': members,
+        'tasks': tasks,
+        'invite_form': invite_form,
+        'invite_error': invite_error,
+        'is_manager': profile.role == 'manager',
+    })
+
+
+@login_required
+def accept_invite(request, invite_id):
+    invite = get_object_or_404(TeamInvite, id=invite_id, recipient=request.user, status='pending')
+    profile = request.user.profile
+    profile.team = invite.team
+    profile.role = 'member'
+    profile.save()
+    invite.status = 'accepted'
+    invite.save()
+    return redirect('team_page')
+
+
+@login_required
+def reject_invite(request, invite_id):
+    invite = get_object_or_404(TeamInvite, id=invite_id, recipient=request.user, status='pending')
+    invite.status = 'rejected'
+    invite.save()
+    return redirect('home')
+
+@login_required
+def remove_member(request, user_id):
+    profile = request.user.profile
+    if profile.role != 'manager':
+        raise PermissionDenied
+
+    target = get_object_or_404(Profile, user_id=user_id, team=profile.team)
+    if target.user == request.user:
+        raise PermissionDenied
+
+    target.team = None
+    target.role = 'member'
+    target.save()
+    return redirect('team_page')
+
+
+@login_required
+def leave_team(request):
+    profile = request.user.profile
+    if not profile.team:
+        return redirect('home')
+    if profile.role == 'manager':
+        raise PermissionDenied
+
+    profile.team = None
+    profile.save()
+    return redirect('home')
+
+
+@login_required
+def delete_team(request):
+    profile = request.user.profile
+    if profile.role != 'manager':
+        raise PermissionDenied
+
+    team = profile.team
+    if not team:
+        return redirect('home')
+
+    member_count = Profile.objects.filter(team=team).count()
+    if member_count > 1:
+        raise PermissionDenied
+
+    profile.team = None
+    profile.role = 'member'
+    profile.save()
+    team.delete()
+    return redirect('home')

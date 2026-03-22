@@ -58,5 +58,10 @@ Thumbs.db         # Windows thumbnail cache
 
 # =========================
 # Environment variables
-# =========================
-.env              # Environment file storing secrets (API keys, DB passwords)
+.env
+*.nix
+.envrc
+.direnv
+
+__pycache__
+*.sqlite3

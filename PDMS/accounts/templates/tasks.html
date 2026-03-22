@@ -3,6 +3,13 @@
 {% block title %}Tasks{% endblock %}
 
 {% block content %}
+{% if no_team %}
+<div class="alert alert-warning">
+  You must be part of a team to view or create tasks.
+  <a href="{% url 'create_team' %}" class="alert-link">Create a team</a> or wait for an invitation.
+</div>
+{% else %}
+
 <h2>{% if is_manager %}Task Assignment{% else %}My Tasks{% endif %}</h2>
 
 <form method="post" enctype="multipart/form-data">
@@ -130,4 +137,6 @@
     <li>No tasks yet.</li>
   {% endfor %}
 </ul>
+
+{% endif %}
 {% endblock %}

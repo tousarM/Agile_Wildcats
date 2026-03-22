@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+
+{% block title %}{{ team.name }}{% endblock %}
+
+{% block content %}
+<h2>{{ team.name }}</h2>
+<p class="text-muted">Team ID: <code>{{ team.id }}</code></p>
+<hr>
+
+<h5>Members</h5>
+<table class="table table-bordered">
+  <thead><tr><th>Name</th><th>Username</th><th>Role</th>{% if is_manager %}<th></th>{% endif %}</tr></thead>
+  <tbody>
+    {% for member in members %}
+    <tr>
+      <td>{{ member.name|default:member.user.username }}</td>
+      <td>{{ member.user.username }}</td>
+      <td>{{ member.get_role_display }}</td>
+      {% if is_manager %}
+      <td>
+        {% if member.user != request.user %}
+        <a href="{% url 'remove_member' member.user.id %}"
+           class="btn btn-sm btn-outline-danger"
+           onclick="return confirm('Remove {{ member.user.username }} from the team?')">
+          Remove
+        </a>
+        {% endif %}
+      </td>
+      {% endif %}
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+{% if is_manager %}
+  {% if members.count == 1 %}
+  <a href="{% url 'delete_team' %}"
+     class="btn btn-danger btn-sm"
+     onclick="return confirm('Delete this team? This cannot be undone.')">
+    Delete Team
+  </a>
+  {% endif %}
+{% else %}
+  <a href="{% url 'leave_team' %}"
+     class="btn btn-outline-danger btn-sm"
+     onclick="return confirm('Leave this team?')">
+    Leave Team
+  </a>
+{% endif %}
+
+<hr>
+<h5>Team Tasks</h5>
+{% if tasks %}
+<table class="table table-bordered">
+  <thead>
+    <tr>
+      <th>Title</th>
+      <th>Status</th>
+      <th>Assigned To</th>
+      <th>Due Date</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for task in tasks %}
+    <tr>
+      <td>{{ task.title }}</td>
+      <td>
+        {% if task.status == 'done' %}
+          <span class="badge bg-success">{{ task.get_status_display }}</span>
+        {% elif task.status == 'in_progress' %}
+          <span class="badge bg-warning text-dark">{{ task.get_status_display }}</span>
+        {% else %}
+          <span class="badge bg-secondary">{{ task.get_status_display }}</span>
+        {% endif %}
+      </td>
+      <td>{{ task.assigned_to.username|default:"Unassigned" }}</td>
+      <td>{{ task.due_date|default:"—" }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="text-muted">No tasks yet.</p>
+{% endif %}
+
+{% if is_manager %}
+<hr>
+<h5>Invite by Username</h5>
+{% if invite_error %}
+<div class="alert alert-danger">{{ invite_error }}</div>
+{% endif %}
+<form method="POST" class="d-flex gap-2">
+  {% csrf_token %}
+  {{ invite_form.username }}
+  <button class="btn btn-primary">Send Invite</button>
+</form>
+{% endif %}
+{% endblock %}

@@ -55,6 +55,11 @@ label {
       <label>Username</label>
       {{ form.username }}
     </div>
+    {% if form.username.errors %}
+      <div class="text-danger" style="font-size:13px; margin-top:-8px; margin-bottom:8px;">
+        {{ form.username.errors|join:", " }}
+      </div>
+    {% endif %}
     <div class="mb-3">
       <label>Full Name</label>
       {{ form.name }}
@@ -62,14 +67,6 @@ label {
     <div class="mb-3">
       <label>Email</label>
       {{ form.email }}
-    </div>
-    <div class="mb-3">
-      <label>Role</label>
-      {{ form.role }}
-    </div>
-    <div class="mb-3">
-      <label>Team / Project</label>
-      {{ form.team }}
     </div>
     <div class="mb-3">
       <label>Password</label>

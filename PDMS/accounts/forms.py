@@ -1,33 +1,23 @@
 from django import forms
 from django.contrib.auth.models import User
-from .models import Task
+from .models import Task, Team
 
 class RegisterForm(forms.Form):
-    username = forms.CharField(
-        widget=forms.TextInput(attrs={'class': 'form-control'})
-    )
+    username = forms.CharField(max_length=150)
+    name = forms.CharField(max_length=100, required=False)
+    email = forms.EmailField()
+    password = forms.CharField(widget=forms.PasswordInput)
 
-    name = forms.CharField(
-        label="Full Name",
-        widget=forms.TextInput(attrs={'class': 'form-control'})
-    )
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        for field in self.fields.values():
+            field.widget.attrs['class'] = 'form-control'
 
-    email = forms.EmailField(
-        widget=forms.EmailInput(attrs={'class': 'form-control'})
-    )
-
-    role = forms.CharField(
-        widget=forms.TextInput(attrs={'class': 'form-control'})
-    )
-
-    team = forms.CharField(
-        label="Team / Project",
-        widget=forms.TextInput(attrs={'class': 'form-control'})
-    )
-
-    password = forms.CharField(
-        widget=forms.PasswordInput(attrs={'class': 'form-control'})
-    )
+    def clean_username(self):
+        username = self.cleaned_data['username']
+        if User.objects.filter(username=username).exists():
+            raise forms.ValidationError("Username already taken.")
+        return username
 
 
 class TaskForm(forms.ModelForm):
@@ -58,3 +48,31 @@ class TaskForm(forms.ModelForm):
             "status": forms.Select(attrs={"class": "form-control"}),
             "attachment": forms.ClearableFileInput(attrs={"class": "form-control"}),
         }
+
+class CreateTeamForm(forms.Form):
+    name = forms.CharField(max_length=100)
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        for field in self.fields.values():
+            field.widget.attrs['class'] = 'form-control'
+
+    def clean_name(self):
+        name = self.cleaned_data['name'].strip()
+        if Team.objects.filter(name__iexact=name).exists():
+            raise forms.ValidationError("A team with that name already exists.")
+        return name
+
+class InviteForm(forms.Form):
+    username = forms.CharField(max_length=150)
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        for field in self.fields.values():
+            field.widget.attrs['class'] = 'form-control'
+
+    def clean_username(self):
+        username = self.cleaned_data['username'].strip()
+        if not User.objects.filter(username=username).exists():
+            raise forms.ValidationError("No user with that username exists.")
+        return username
