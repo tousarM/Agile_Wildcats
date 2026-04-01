@@ -1,0 +1,59 @@
+name: Django Release CI/CD
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'   # Trigger only when a version tag is pushed (e.g., v1.0.0)
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      #  Checks out your code at the tagged commit
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      # Sets up Python 3.14
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.14"
+
+      # Installs dependencies
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+
+      # Runs migrations
+      - name: Run migrations
+        run: |
+          python manage.py migrate --noinput
+
+      #  Runs tests
+      - name: Run tests
+        run: |
+          python manage.py test
+
+      #  Builds Docker image tagged with the release version
+      - name: Build Docker image
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/}
+          docker build -t gawardak004/agile_wildcats_pdms:$VERSION .
+
+      #  Pushes Docker image to Docker Hub with version tag
+      - name: Push Docker image to Docker Hub
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/}
+          echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
+          docker push gawardak004/agile_wildcats_pdms:$VERSION
+          docker tag gawardak004/agile_wildcats_pdms:$VERSION gawardak004/agile_wildcats_pdms:latest
+          docker push gawardak004/agile_wildcats_pdms:latest
+
+      #  Deploy to Kubernetes (using manifests in k8s/)
+      - name: Deploy to Kubernetes
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/}
+          kubectl set image deployment/pdms-deployment pdms=gawardak004/agile_wildcats_pdms:$VERSION
+          kubectl rollout status deployment/pdms-deployment
