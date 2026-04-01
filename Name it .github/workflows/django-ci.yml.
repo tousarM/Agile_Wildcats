@@ -11,32 +11,39 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      # Checks out your code from the GitHub repository
       - name: Checkout code
         uses: actions/checkout@v3
 
+      # Sets up Python 3.14 environment on the runner
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
           python-version: "3.14"
 
+      # Installs dependencies from requirements.txt
       - name: Install dependencies
         run: |
           pip install -r requirements.txt
 
+      # Runs database migrations to ensure schema is up to date
       - name: Run migrations
         run: |
           python manage.py migrate --noinput
 
+      # Runs Django test suite to verify code correctness
       - name: Run tests
         run: |
           python manage.py test
 
+      #  Builds a Docker image for the PDMS project
       - name: Build Docker image
         run: |
           docker build -t agile_wildcats_pdms .
 
+      # Pushes the Docker image to Docker Hub (gawardak004/agile_wildcats_pdms:latest)
       - name: Push Docker image to Docker Hub
         run: |
           echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
-          docker tag agile_wildcats_pdms yourdockerhubuser/agile_wildcats_pdms:latest
-          docker push yourdockerhubuser/agile_wildcats_pdms:latest
+          docker tag agile_wildcats_pdms ${{ secrets.DOCKER_USERNAME }}/agile_wildcats_pdms:latest
+          docker push ${{ secrets.DOCKER_USERNAME }}/agile_wildcats_pdms:latest
