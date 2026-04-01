@@ -1,0 +1,22 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pdms-deployment
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: pdms
+  template:
+    metadata:
+      labels:
+        app: pdms
+    spec:
+      containers:
+        - name: pdms
+          image: gawardak004/agile_wildcats_pdms:latest
+          ports:
+            - containerPort: 8000
+          envFrom:
+            - secretRef:
+                name: pdms-secret
