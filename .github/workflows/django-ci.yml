@@ -24,7 +24,7 @@ jobs:
       # Installs dependencies from requirements.txt
       - name: Install dependencies
         run: |
-          pip install -r requirements.txt
+          pip install -r PDMS/PDMS/requirements.txt
 
       # Runs database migrations to ensure schema is up to date
       - name: Run migrations
