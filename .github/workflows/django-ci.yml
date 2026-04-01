@@ -1,67 +1,68 @@
-name: Django CI/CD
+name: Django CI/CD   # Workflow name shown in GitHub Actions
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ "main" ]   # Trigger workflow when code is pushed to main
   pull_request:
-    branches: [ "main" ]
+    branches: [ "main" ]   # Trigger workflow on pull requests targeting main
   release:
-    types: [published]
+    types: [published]     # Trigger workflow when a new GitHub release is published
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-latest   # Use latest Ubuntu runner
 
     steps:
       # Checkout code
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v3   # Pulls your repo code into the runner
 
       # Set up Python 3.14
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
-          python-version: "3.14"
+          python-version: "3.14"    # Ensures Python 3.14 is installed
 
       # Install dependencies from PDMS/requirements.txt
       - name: Install dependencies
         run: |
-          pip install --upgrade pip
-          pip install -r PDMS/requirements.txt
+          pip install --upgrade pip   # Upgrade pip
+          pip install -r PDMS/requirements.txt   # Install project dependencies
 
       # Run migrations with secret key
       - name: Run migrations
         env:
-          SECRET_KEY: ${{ secrets.PDMS_secret_key }}
+          SECRET_KEY: ${{ secrets.PDMS_secret_key }}   # Inject Django secret key
         run: |
-          python PDMS/manage.py migrate --noinput
+          python PDMS/manage.py migrate --noinput   # Apply database migrations
 
       # Run Django tests with secret key
       - name: Run tests
         env:
-          SECRET_KEY: ${{ secrets.PDMS_secret_key }}
+          SECRET_KEY: ${{ secrets.PDMS_secret_key }}   # Inject Django secret key
         run: |
-          python PDMS/manage.py test
+          python PDMS/manage.py test   # Run Django test suite
 
       # Build Docker image (Dockerfile inside PDMS/)
       - name: Build Docker image
         run: |
-          docker build -t agile_wildcats_pdms -f PDMS/Dockerfile PDMS
+          docker build -t agile_wildcats_pdms -f PDMS/Dockerfile PDMS   # Build image
 
       # Push Docker image to Docker Hub
       - name: Push Docker image to Docker Hub
         run: |
+          # Login to Docker Hub using secrets
           echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
           
-          # Tag with 'latest'
+          # Tag with 'latest' for rolling builds
           docker tag agile_wildcats_pdms ${{ secrets.DOCKER_USERNAME }}/agile_wildcats_pdms:latest
           docker push ${{ secrets.DOCKER_USERNAME }}/agile_wildcats_pdms:latest
           
-          # Tag with commit SHA
+          # Tag with commit SHA for traceability
           docker tag agile_wildcats_pdms ${{ secrets.DOCKER_USERNAME }}/agile_wildcats_pdms:${{ github.sha }}
           docker push ${{ secrets.DOCKER_USERNAME }}/agile_wildcats_pdms:${{ github.sha }}
           
-          # Tag with release version (only runs on release event)
+          # Tag with release version (only runs when triggered by a release)
           if [ "${{ github.event_name }}" = "release" ]; then
             docker tag agile_wildcats_pdms ${{ secrets.DOCKER_USERNAME }}/agile_wildcats_pdms:${{ github.event.release.tag_name }}
             docker push ${{ secrets.DOCKER_USERNAME }}/agile_wildcats_pdms:${{ github.event.release.tag_name }}
