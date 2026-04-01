@@ -11,29 +11,33 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      #  Checkout code
+      # Checkout code
       - name: Checkout code
         uses: actions/checkout@v3
 
-      #  Set up Python 3.14
+      # Set up Python 3.14
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
           python-version: "3.14"
 
-      #  Install dependencies from the correct path
+      # Install dependencies from PDMS/requirements.txt
       - name: Install dependencies
         run: |
           pip install --upgrade pip
           pip install -r PDMS/requirements.txt
 
-      # Run migrations (note: manage.py is inside PDMS)
+      # Run migrations with secret key
       - name: Run migrations
+        env:
+          SECRET_KEY: ${{ secrets.PDMS_secret_key }}
         run: |
           python PDMS/manage.py migrate --noinput
 
-      #  Run Django tests
+      # Run Django tests with secret key
       - name: Run tests
+        env:
+          SECRET_KEY: ${{ secrets.PDMS_secret_key }}
         run: |
           python PDMS/manage.py test
 
