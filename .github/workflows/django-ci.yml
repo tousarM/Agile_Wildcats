@@ -25,17 +25,17 @@ jobs:
       - name: Install dependencies
         run: |
           pip install --upgrade pip
-          pip install -r PDMS/PDMS/requirements.txt
+          pip install -r PDMS/requirements.txt
 
-      # Run migrations (note: manage.py is inside PDMS/PDMS)
+      # Run migrations (note: manage.py is inside PDMS)
       - name: Run migrations
         run: |
-          python PDMS/PDMS/manage.py migrate --noinput
+          python PDMS/manage.py migrate --noinput
 
       #  Run Django tests
       - name: Run tests
         run: |
-          python PDMS/PDMS/manage.py test
+          python PDMS/manage.py test
 
       # Build Docker image
       - name: Build Docker image
