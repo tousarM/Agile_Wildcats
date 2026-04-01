@@ -41,10 +41,10 @@ jobs:
         run: |
           python PDMS/manage.py test
 
-      # Build Docker image
+      # Build Docker image (Dockerfile inside PDMS/)
       - name: Build Docker image
         run: |
-          docker build -t agile_wildcats_pdms .
+          docker build -t agile_wildcats_pdms -f PDMS/Dockerfile PDMS
 
       # Push Docker image to Docker Hub
       - name: Push Docker image to Docker Hub
