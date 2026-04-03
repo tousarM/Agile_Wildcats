@@ -19,7 +19,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v3
 
-      # Set up Python 3.14
+      # Set up Python
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
@@ -48,7 +48,7 @@ jobs:
       # Build Docker image
       - name: Build Docker image
         run: |
-          VERSION=${GITHUB_REF#refs/tags/}   # Extract version if triggered by tag
+          VERSION=${GITHUB_REF#refs/tags/}
           if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
             docker build -t agilewildcats/pdms:$VERSION -f PDMS/Dockerfile PDMS
           else
@@ -79,5 +79,6 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/')
         run: |
           VERSION=${GITHUB_REF#refs/tags/}
+          echo "${{ secrets.KUBE_CONFIG }}" > $HOME/.kube/config
           kubectl set image deployment/pdms-deployment pdms=agilewildcats/pdms:$VERSION
-          kubectl rollout status deployment/pdms-deployment
+          kubectl rollout status deployment/pdms-deployment --timeout=120s
