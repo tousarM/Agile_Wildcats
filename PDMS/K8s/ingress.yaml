@@ -5,6 +5,7 @@ metadata:
   annotations:
     nginx.ingress.kubernetes.io/rewrite-target: /
 spec:
+  ingressClassName: nginx
   rules:
     - host: pdms.local
       http:
@@ -16,3 +17,7 @@ spec:
                 name: pdms-service
                 port:
                   number: 80
+  tls:
+    - hosts:
+        - pdms.local
+      secretName: pdms-tls
