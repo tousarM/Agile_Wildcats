@@ -1,38 +1,40 @@
-name: Django pdms CI/CD   # Workflow name
+name: Django PDMS CI/CD   # Unified workflow name
 
 on:
   push:
-    branches: [ "main" ]   # Trigger on push to main
+    branches: [ "main" ]       # Run CI on pushes to main
+    tags:
+      - 'v*.*.*'               # Run CD when a version tag is pushed (e.g., v1.0.0)
   pull_request:
-    branches: [ "main" ]   # Trigger on PRs to main
+    branches: [ "main" ]       # Run CI on pull requests to main
   release:
-    types: [published]     # Trigger when a release is published
+    types: [published]         # Run CD when a release is published
 
 jobs:
-  build:
-    runs-on: ubuntu-latest   # Use Ubuntu runner
+  build-and-deploy:
+    runs-on: ubuntu-latest
 
     steps:
       # Checkout code
       - name: Checkout code
-        uses: actions/checkout@v3   # Pull repo code
+        uses: actions/checkout@v3
 
       # Set up Python 3.14
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
-          python-version: "3.14"    # Install Python 3.14
+          python-version: "3.14"
 
       # Install dependencies
       - name: Install dependencies
         run: |
           pip install --upgrade pip
-          pip install -r PDMS/requirements.txt   # Install project requirements
+          pip install -r PDMS/requirements.txt
 
       # Run migrations
       - name: Run migrations
         env:
-          SECRET_KEY: ${{ secrets.PDMS_secret_key }}   # Inject Django secret key
+          SECRET_KEY: ${{ secrets.PDMS_secret_key }}
         run: |
           python PDMS/manage.py migrate --noinput
 
@@ -46,24 +48,36 @@ jobs:
       # Build Docker image
       - name: Build Docker image
         run: |
-          docker build -t agilewildcats/pdms -f PDMS/Dockerfile PDMS   # Build image
+          VERSION=${GITHUB_REF#refs/tags/}   # Extract version if triggered by tag
+          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            docker build -t agilewildcats/pdms:$VERSION -f PDMS/Dockerfile PDMS
+          else
+            docker build -t agilewildcats/pdms -f PDMS/Dockerfile PDMS
+          fi
 
       # Push Docker image to Docker Hub
       - name: Push Docker image to Docker Hub
         run: |
-          # Login with secrets (use an org admin account)
+          VERSION=${GITHUB_REF#refs/tags/}
           echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
           
-          # Tag with 'latest'
+          # Always push 'latest'
           docker tag agilewildcats/pdms agilewildcats/pdms:latest
           docker push agilewildcats/pdms:latest
           
-          # Tag with commit SHA
+          # Push commit SHA for traceability
           docker tag agilewildcats/pdms agilewildcats/pdms:${{ github.sha }}
           docker push agilewildcats/pdms:${{ github.sha }}
           
-          # Tag with release version (only runs on release event)
-          if [ "${{ github.event_name }}" = "release" ]; then
-            docker tag agilewildcats/pdms agilewildcats/pdms:${{ github.event.release.tag_name }}
-            docker push agilewildcats/pdms:${{ github.event.release.tag_name }}
+          # Push version tag if triggered by release/tag
+          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            docker push agilewildcats/pdms:$VERSION
           fi
+
+      # Deploy to Kubernetes (only on release/tag)
+      - name: Deploy to Kubernetes
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/}
+          kubectl set image deployment/pdms-deployment pdms=agilewildcats/pdms:$VERSION
+          kubectl rollout status deployment/pdms-deployment
