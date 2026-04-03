@@ -1,4 +1,4 @@
-name: Django Release CI/CD
+name: Django Release CI/CD   # Workflow name
 
 on:
   push:
@@ -7,53 +7,58 @@ on:
 
 jobs:
   build-and-deploy:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-latest   # Use Ubuntu runner
 
     steps:
-      #  Checks out your code at the tagged commit
+      # Checkout code at the tagged commit
       - name: Checkout code
         uses: actions/checkout@v3
 
-      # Sets up Python 3.14
+      # Set up Python 3.14
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
           python-version: "3.14"
 
-      # Installs dependencies
+      # Install dependencies
       - name: Install dependencies
         run: |
           pip install --upgrade pip
           pip install -r requirements.txt
 
-      # Runs migrations
+      # Run migrations
       - name: Run migrations
         run: |
           python manage.py migrate --noinput
 
-      #  Runs tests
+      # Run tests
       - name: Run tests
         run: |
           python manage.py test
 
-      #  Builds Docker image tagged with the release version
+      # Build Docker image tagged with the release version
       - name: Build Docker image
         run: |
-          VERSION=${GITHUB_REF#refs/tags/}
-          docker build -t gawardak004/agile_wildcats_pdms:$VERSION .
+          VERSION=${GITHUB_REF#refs/tags/}   # Extract version from tag (e.g., v1.0.0)
+          docker build -t agilewildcats/pdms:$VERSION .   # Build image with version tag
 
-      #  Pushes Docker image to Docker Hub with version tag
+      # Push Docker image to Docker Hub with version tag + latest
       - name: Push Docker image to Docker Hub
         run: |
           VERSION=${GITHUB_REF#refs/tags/}
+          # Login to Docker Hub using secrets
           echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
-          docker push gawardak004/agile_wildcats_pdms:$VERSION
-          docker tag gawardak004/agile_wildcats_pdms:$VERSION gawardak004/agile_wildcats_pdms:latest
-          docker push gawardak004/agile_wildcats_pdms:latest
+          # Push version tag
+          docker push agilewildcats/pdms:$VERSION
+          # Also tag and push as 'latest'
+          docker tag agilewildcats/pdms:$VERSION agilewildcats/pdms:latest
+          docker push agilewildcats/pdms:latest
 
-      #  Deploy to Kubernetes (using manifests in k8s/)
+      # Deploy to Kubernetes (using manifests in k8s/)
       - name: Deploy to Kubernetes
         run: |
           VERSION=${GITHUB_REF#refs/tags/}
-          kubectl set image deployment/pdms-deployment pdms=gawardak004/agile_wildcats_pdms:$VERSION
+          # Update Kubernetes deployment to use the new image version
+          kubectl set image deployment/pdms-deployment pdms=agilewildcats/pdms:$VERSION
+          # Wait for rollout to complete
           kubectl rollout status deployment/pdms-deployment
