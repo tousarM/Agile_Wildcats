@@ -5,7 +5,8 @@ FROM python:3.14.2-slim
 # Environment variables
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    DJANGO_SETTINGS_MODULE=PDMS.settings
+    DJANGO_SETTINGS_MODULE=PDMS.settings \
+    PATH="/usr/local/bin:$PATH"
 
 # Set work directory
 WORKDIR /app
@@ -14,17 +15,22 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     libpq-dev \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements first (for caching)
 COPY requirements.txt /app/
-RUN pip install --upgrade pip && pip install -r requirements.txt
+RUN pip install --upgrade pip && pip install --no-cache-dir -r requirements.txt
 
 # Copy project files
 COPY . /app/
+
+# Create non-root user for security
+RUN adduser --disabled-password --gecos '' django && chown -R django /app
+USER django
 
 # Expose port
 EXPOSE 8000
 
 # Default command (Gunicorn for production; can override in docker-compose)
-CMD ["gunicorn", "PDMS.wsgi:application", "--bind", "0.0.0.0:8000"]
+CMD ["gunicorn", "PDMS.wsgi:application", "--bind", "0.0.0.0:8000", "--workers=3"]
