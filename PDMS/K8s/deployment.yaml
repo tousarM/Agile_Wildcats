@@ -2,8 +2,16 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: pdms-deployment
+  labels:
+    app: pdms
 spec:
   replicas: 2
+  revisionHistoryLimit: 3   # Keep rollout history for rollback
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+      maxSurge: 1
   selector:
     matchLabels:
       app: pdms
@@ -14,7 +22,7 @@ spec:
     spec:
       containers:
         - name: pdms
-          image: agilewildcats/pdms:latest   
+          image: agilewildcats/pdms:latest   # Use version/commit SHA in production
           ports:
             - containerPort: 8000
           envFrom:
@@ -33,9 +41,14 @@ spec:
               port: 8000
             initialDelaySeconds: 30
             periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
           readinessProbe:
             httpGet:
               path: /
               port: 8000
             initialDelaySeconds: 10
             periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+      restartPolicy: Always
