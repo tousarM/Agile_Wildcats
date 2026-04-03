@@ -2,8 +2,12 @@ apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: pdms-ingress
+  labels:
+    app: pdms
   annotations:
     nginx.ingress.kubernetes.io/rewrite-target: /
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"   # Force HTTPS
+    nginx.ingress.kubernetes.io/proxy-body-size: "10m" # Allow larger uploads if needed
 spec:
   ingressClassName: nginx
   rules:
