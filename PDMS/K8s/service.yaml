@@ -7,6 +7,7 @@ spec:
     app: pdms
   ports:
     - protocol: TCP
-      port: 80
-      targetPort: 8000
+      port: 80        # external port
+      targetPort: 8000 # Django container port
   type: LoadBalancer
+  sessionAffinity: None
