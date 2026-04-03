@@ -1,69 +1,69 @@
-name: Django CI/CD   # Workflow name shown in GitHub Actions
+name: Django CI/CD   # Workflow name
 
 on:
   push:
-    branches: [ "main" ]   # Trigger workflow when code is pushed to main
+    branches: [ "main" ]   # Trigger on push to main
   pull_request:
-    branches: [ "main" ]   # Trigger workflow on pull requests targeting main
+    branches: [ "main" ]   # Trigger on PRs to main
   release:
-    types: [published]     # Trigger workflow when a new GitHub release is published
+    types: [published]     # Trigger when a release is published
 
 jobs:
   build:
-    runs-on: ubuntu-latest   # Use latest Ubuntu runner
+    runs-on: ubuntu-latest   # Use Ubuntu runner
 
     steps:
       # Checkout code
       - name: Checkout code
-        uses: actions/checkout@v3   # Pulls your repo code into the runner
+        uses: actions/checkout@v3   # Pull repo code
 
       # Set up Python 3.14
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
-          python-version: "3.14"    # Ensures Python 3.14 is installed
+          python-version: "3.14"    # Install Python 3.14
 
-      # Install dependencies from PDMS/requirements.txt
+      # Install dependencies
       - name: Install dependencies
         run: |
-          pip install --upgrade pip   # Upgrade pip
-          pip install -r PDMS/requirements.txt   # Install project dependencies
+          pip install --upgrade pip
+          pip install -r PDMS/requirements.txt   # Install project requirements
 
-      # Run migrations with secret key
+      # Run migrations
       - name: Run migrations
         env:
           SECRET_KEY: ${{ secrets.PDMS_secret_key }}   # Inject Django secret key
         run: |
-          python PDMS/manage.py migrate --noinput   # Apply database migrations
+          python PDMS/manage.py migrate --noinput
 
-      # Run Django tests with secret key
+      # Run tests
       - name: Run tests
         env:
-          SECRET_KEY: ${{ secrets.PDMS_secret_key }}   # Inject Django secret key
+          SECRET_KEY: ${{ secrets.PDMS_secret_key }}
         run: |
-          python PDMS/manage.py test   # Run Django test suite
+          python PDMS/manage.py test
 
-      # Build Docker image (Dockerfile inside PDMS/)
+      # Build Docker image
       - name: Build Docker image
         run: |
-          docker build -t agile_wildcats_pdms -f PDMS/Dockerfile PDMS   # Build image
+          docker build -t agilewildcats/pdms -f PDMS/Dockerfile PDMS   # Build image
 
       # Push Docker image to Docker Hub
       - name: Push Docker image to Docker Hub
         run: |
-          # Login to Docker Hub using secrets
+          # Login with secrets (use an org admin account)
           echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
           
-          # Tag with 'latest' for rolling builds
-          docker tag agile_wildcats_pdms ${{ secrets.DOCKER_USERNAME }}/agile_wildcats_pdms:latest
-          docker push ${{ secrets.DOCKER_USERNAME }}/agile_wildcats_pdms:latest
+          # Tag with 'latest'
+          docker tag agilewildcats/pdms agilewildcats/pdms:latest
+          docker push agilewildcats/pdms:latest
           
-          # Tag with commit SHA for traceability
-          docker tag agile_wildcats_pdms ${{ secrets.DOCKER_USERNAME }}/agile_wildcats_pdms:${{ github.sha }}
-          docker push ${{ secrets.DOCKER_USERNAME }}/agile_wildcats_pdms:${{ github.sha }}
+          # Tag with commit SHA
+          docker tag agilewildcats/pdms agilewildcats/pdms:${{ github.sha }}
+          docker push agilewildcats/pdms:${{ github.sha }}
           
-          # Tag with release version (only runs when triggered by a release)
+          # Tag with release version (only runs on release event)
           if [ "${{ github.event_name }}" = "release" ]; then
-            docker tag agile_wildcats_pdms ${{ secrets.DOCKER_USERNAME }}/agile_wildcats_pdms:${{ github.event.release.tag_name }}
-            docker push ${{ secrets.DOCKER_USERNAME }}/agile_wildcats_pdms:${{ github.event.release.tag_name }}
+            docker tag agilewildcats/pdms agilewildcats/pdms:${{ github.event.release.tag_name }}
+            docker push agilewildcats/pdms:${{ github.event.release.tag_name }}
           fi
