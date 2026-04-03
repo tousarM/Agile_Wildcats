@@ -1,4 +1,4 @@
-name: Django CI/CD   # Workflow name
+name: Django pdms CI/CD   # Workflow name
 
 on:
   push:
