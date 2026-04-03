@@ -2,7 +2,7 @@ name: Django PDMS CI/CD   # Unified workflow name
 
 on:
   push:
-    branches: [ "main" ]       # Run CI on pushes to main
+    branches: [ "main" ]       # Run CI/CD on pushes to main
     tags:
       - 'v*.*.*'               # Run CD when a version tag is pushed (e.g., v1.0.0)
   pull_request:
@@ -11,7 +11,7 @@ on:
     types: [published]         # Run CD when a release is published
 
 jobs:
-  build-and-deploy:
+  build-test-deploy:
     runs-on: ubuntu-latest
 
     steps:
@@ -35,48 +35,33 @@ jobs:
       - name: Run migrations
         env:
           SECRET_KEY: ${{ secrets.PDMS_secret_key }}
-        run: |
-          python PDMS/manage.py migrate --noinput
+        run: python PDMS/manage.py migrate --noinput
 
       # Run tests
       - name: Run tests
         env:
           SECRET_KEY: ${{ secrets.PDMS_secret_key }}
-        run: |
-          python PDMS/manage.py test
+        run: python PDMS/manage.py test
 
       # Build Docker image
       - name: Build Docker image
         run: |
           VERSION=${GITHUB_REF#refs/tags/}
-          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
-            docker build -t agilewildcats/pdms:$VERSION -f PDMS/Dockerfile PDMS
-          else
-            docker build -t agilewildcats/pdms -f PDMS/Dockerfile PDMS
-          fi
+          docker build -t agilewildcats/pdms:$VERSION -f PDMS/Dockerfile PDMS
 
-      # Push Docker image to Docker Hub
-      - name: Push Docker image to Docker Hub
+      # Push Docker image
+      - name: Push Docker image
         run: |
           VERSION=${GITHUB_REF#refs/tags/}
           echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
-          
-          # Always push 'latest'
-          docker tag agilewildcats/pdms agilewildcats/pdms:latest
+          docker push agilewildcats/pdms:$VERSION
+          docker tag agilewildcats/pdms:$VERSION agilewildcats/pdms:latest
           docker push agilewildcats/pdms:latest
-          
-          # Push commit SHA for traceability
-          docker tag agilewildcats/pdms agilewildcats/pdms:${{ github.sha }}
+          docker tag agilewildcats/pdms:$VERSION agilewildcats/pdms:${{ github.sha }}
           docker push agilewildcats/pdms:${{ github.sha }}
-          
-          # Push version tag if triggered by release/tag
-          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
-            docker push agilewildcats/pdms:$VERSION
-          fi
 
-      # Deploy to Kubernetes (only on release/tag)
+      # Deploy to Kubernetes
       - name: Deploy to Kubernetes
-        if: startsWith(github.ref, 'refs/tags/')
         run: |
           VERSION=${GITHUB_REF#refs/tags/}
           echo "${{ secrets.KUBE_CONFIG }}" > $HOME/.kube/config
