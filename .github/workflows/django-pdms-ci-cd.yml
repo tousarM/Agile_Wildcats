@@ -46,22 +46,38 @@ jobs:
       # Build Docker image
       - name: Build Docker image
         run: |
-          VERSION=${GITHUB_REF#refs/tags/}
-          docker build -t agilewildcats/pdms:$VERSION -f PDMS/Dockerfile PDMS
+          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            VERSION=${GITHUB_REF#refs/tags/}
+            docker build -t agilewildcats/pdms:$VERSION -f PDMS/Dockerfile PDMS
+          else
+            BRANCH=$(echo ${GITHUB_REF#refs/heads/} | tr '/' '-')
+            docker build -t agilewildcats/pdms:$BRANCH -f PDMS/Dockerfile PDMS
+          fi
 
       # Push Docker image
       - name: Push Docker image
         run: |
-          VERSION=${GITHUB_REF#refs/tags/}
           echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
-          docker push agilewildcats/pdms:$VERSION
-          docker tag agilewildcats/pdms:$VERSION agilewildcats/pdms:latest
-          docker push agilewildcats/pdms:latest
-          docker tag agilewildcats/pdms:$VERSION agilewildcats/pdms:${{ github.sha }}
+          
+          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            VERSION=${GITHUB_REF#refs/tags/}
+            docker push agilewildcats/pdms:$VERSION
+            docker tag agilewildcats/pdms:$VERSION agilewildcats/pdms:latest
+            docker push agilewildcats/pdms:latest
+          else
+            BRANCH=$(echo ${GITHUB_REF#refs/heads/} | tr '/' '-')
+            docker push agilewildcats/pdms:$BRANCH
+            docker tag agilewildcats/pdms:$BRANCH agilewildcats/pdms:latest
+            docker push agilewildcats/pdms:latest
+          fi
+
+          # Always push commit SHA for traceability
+          docker tag agilewildcats/pdms agilewildcats/pdms:${{ github.sha }}
           docker push agilewildcats/pdms:${{ github.sha }}
 
-      # Deploy to Kubernetes
+      # Deploy to Kubernetes (only on release/tag)
       - name: Deploy to Kubernetes
+        if: startsWith(github.ref, 'refs/tags/')
         run: |
           VERSION=${GITHUB_REF#refs/tags/}
           echo "${{ secrets.KUBE_CONFIG }}" > $HOME/.kube/config
