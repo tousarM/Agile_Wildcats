@@ -69,16 +69,20 @@ jobs:
             docker push agilewildcats/pdms:$VERSION
             docker tag agilewildcats/pdms:$VERSION agilewildcats/pdms:latest
             docker push agilewildcats/pdms:latest
+
+            # Commit SHA tag from version
+            docker tag agilewildcats/pdms:$VERSION agilewildcats/pdms:${{ github.sha }}
+            docker push agilewildcats/pdms:${{ github.sha }}
           else
             BRANCH=$(echo ${GITHUB_REF#refs/heads/} | tr '/' '-')
             docker push agilewildcats/pdms:$BRANCH
             docker tag agilewildcats/pdms:$BRANCH agilewildcats/pdms:latest
             docker push agilewildcats/pdms:latest
-          fi
 
-          # Always push commit SHA for traceability
-          docker tag agilewildcats/pdms agilewildcats/pdms:${{ github.sha }}
-          docker push agilewildcats/pdms:${{ github.sha }}
+            # Commit SHA tag from branch
+            docker tag agilewildcats/pdms:$BRANCH agilewildcats/pdms:${{ github.sha }}
+            docker push agilewildcats/pdms:${{ github.sha }}
+          fi
 
       # Deploy to Kubernetes (only on release/tag)
       - name: Deploy to Kubernetes
