@@ -54,6 +54,10 @@ jobs:
             docker build -t agilewildcats/pdms:$BRANCH -f PDMS/Dockerfile PDMS
           fi
 
+      # Sanity check Docker username
+      - name: Sanity check Docker username
+        run: echo "Using Docker username: ${{ secrets.DOCKER_USERNAME }}"
+
       # Push Docker image
       - name: Push Docker image
         run: |
