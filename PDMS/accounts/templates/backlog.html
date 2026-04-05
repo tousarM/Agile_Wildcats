@@ -1,0 +1,224 @@
+{% extends "base.html" %}
+
+{% block title %}Backlog{% endblock %}
+
+{% block content %}
+{% if no_team %}
+<div class="alert alert-warning">
+  You must be part of a team to view the backlog.
+  <a href="{% url 'create_team' %}" class="alert-link">Create a team</a> or wait for an invitation.
+</div>
+{% else %}
+
+<div class="d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-3 mb-4">
+  <div>
+    <h2 class="mb-1">Product Backlog</h2>
+    <p class="text-muted mb-0">
+      Capture backlog items here, then use <a href="{% url 'task_page' %}">Tasks</a> for day-to-day execution updates.
+    </p>
+  </div>
+  {% if is_manager %}
+  <span class="badge text-bg-primary p-2">Managers can create and groom backlog items</span>
+  {% else %}
+  <span class="badge text-bg-secondary p-2">View-only backlog access</span>
+  {% endif %}
+</div>
+
+{% if is_manager %}
+<div class="card shadow-sm mb-4">
+  <div class="card-body">
+    <h4 class="card-title">Add Backlog Item</h4>
+    <form method="post" enctype="multipart/form-data">
+      {% csrf_token %}
+      <input type="hidden" name="action" value="create_backlog_item">
+      {% if create_form.non_field_errors %}
+      <div class="alert alert-danger">{{ create_form.non_field_errors }}</div>
+      {% endif %}
+      <div class="row g-3">
+        <div class="col-md-6">
+          <label class="form-label" for="{{ create_form.title.id_for_label }}">Title</label>
+          {{ create_form.title }}
+          {{ create_form.title.errors }}
+        </div>
+        <div class="col-md-3">
+          <label class="form-label" for="{{ create_form.item_type.id_for_label }}">Type</label>
+          {{ create_form.item_type }}
+          {{ create_form.item_type.errors }}
+        </div>
+        <div class="col-md-3">
+          <label class="form-label" for="{{ create_form.priority.id_for_label }}">Priority</label>
+          {{ create_form.priority }}
+          {{ create_form.priority.errors }}
+        </div>
+        <div class="col-md-4">
+          <label class="form-label" for="{{ create_form.backlog_state.id_for_label }}">Backlog Stage</label>
+          {{ create_form.backlog_state }}
+          {{ create_form.backlog_state.errors }}
+        </div>
+        <div class="col-md-4">
+          <label class="form-label" for="{{ create_form.due_date.id_for_label }}">Due Date</label>
+          {{ create_form.due_date }}
+          {{ create_form.due_date.errors }}
+        </div>
+        <div class="col-md-4">
+          <label class="form-label" for="{{ create_form.assigned_to.id_for_label }}">Assigned To</label>
+          {{ create_form.assigned_to }}
+          {{ create_form.assigned_to.errors }}
+        </div>
+        <div class="col-12">
+          <label class="form-label" for="{{ create_form.description.id_for_label }}">Description</label>
+          {{ create_form.description }}
+          {{ create_form.description.errors }}
+        </div>
+        <div class="col-12">
+          <label class="form-label" for="{{ create_form.acceptance_criteria.id_for_label }}">Acceptance Criteria</label>
+          {{ create_form.acceptance_criteria }}
+          {{ create_form.acceptance_criteria.errors }}
+        </div>
+        <div class="col-12">
+          <label class="form-label" for="{{ create_form.attachment.id_for_label }}">Attachment</label>
+          {{ create_form.attachment }}
+          {{ create_form.attachment.errors }}
+        </div>
+      </div>
+      <button type="submit" class="btn btn-primary mt-3">Create Backlog Item</button>
+    </form>
+  </div>
+</div>
+{% endif %}
+
+{% for section in backlog_sections %}
+<section class="mb-4">
+  <div class="d-flex justify-content-between align-items-center mb-2">
+    <h4 class="mb-0">{{ section.label }}</h4>
+    <span class="badge text-bg-light">{{ section.items|length }} item{{ section.items|length|pluralize }}</span>
+  </div>
+
+  {% if section.items %}
+  <div class="row g-3">
+    {% for item in section.items %}
+    <div class="col-12">
+      <div class="card shadow-sm">
+        <div class="card-body">
+          <div class="d-flex flex-column flex-lg-row justify-content-between gap-3">
+            <div>
+              <div class="d-flex flex-wrap gap-2 mb-2">
+                <span class="badge text-bg-dark">{{ item.get_item_type_display }}</span>
+                {% if item.priority == "critical" %}
+                <span class="badge text-bg-danger">{{ item.get_priority_display }}</span>
+                {% elif item.priority == "high" %}
+                <span class="badge bg-warning text-dark">{{ item.get_priority_display }}</span>
+                {% elif item.priority == "medium" %}
+                <span class="badge text-bg-primary">{{ item.get_priority_display }}</span>
+                {% else %}
+                <span class="badge text-bg-secondary">{{ item.get_priority_display }}</span>
+                {% endif %}
+
+                {% if item.status == "done" %}
+                <span class="badge text-bg-success">Execution: {{ item.get_status_display }}</span>
+                {% elif item.status == "in_progress" %}
+                <span class="badge bg-warning text-dark">Execution: {{ item.get_status_display }}</span>
+                {% else %}
+                <span class="badge text-bg-secondary">Execution: {{ item.get_status_display }}</span>
+                {% endif %}
+              </div>
+
+              <h5 class="card-title mb-1">{{ item.title }}</h5>
+              <p class="text-muted mb-2">
+                Assigned to:
+                {% if item.assigned_to %}
+                  {{ item.assigned_to.username }}
+                {% else %}
+                  Unassigned
+                {% endif %}
+                | Due: {{ item.due_date|default:"No due date" }}
+              </p>
+
+              {% if item.description %}
+              <p class="mb-2">{{ item.description }}</p>
+              {% endif %}
+
+              {% if item.acceptance_criteria %}
+              <div class="mb-2">
+                <strong>Acceptance Criteria</strong>
+                <div class="text-muted">{{ item.acceptance_criteria|linebreaksbr }}</div>
+              </div>
+              {% endif %}
+
+              {% if item.attachment %}
+              <div class="mb-2">
+                <a href="{{ item.attachment.url }}" download>Download backlog attachment</a>
+              </div>
+              {% endif %}
+            </div>
+          </div>
+
+          {% if is_manager %}
+          <hr>
+          <form method="post">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="update_backlog_item">
+            <input type="hidden" name="task_id" value="{{ item.id }}">
+            {% if item.groom_form.non_field_errors %}
+            <div class="alert alert-danger">{{ item.groom_form.non_field_errors }}</div>
+            {% endif %}
+            <div class="row g-3">
+              <div class="col-md-6">
+                <label class="form-label" for="{{ item.groom_form.title.id_for_label }}">Title</label>
+                {{ item.groom_form.title }}
+                {{ item.groom_form.title.errors }}
+              </div>
+              <div class="col-md-2">
+                <label class="form-label" for="{{ item.groom_form.item_type.id_for_label }}">Type</label>
+                {{ item.groom_form.item_type }}
+                {{ item.groom_form.item_type.errors }}
+              </div>
+              <div class="col-md-2">
+                <label class="form-label" for="{{ item.groom_form.priority.id_for_label }}">Priority</label>
+                {{ item.groom_form.priority }}
+                {{ item.groom_form.priority.errors }}
+              </div>
+              <div class="col-md-2">
+                <label class="form-label" for="{{ item.groom_form.backlog_state.id_for_label }}">Stage</label>
+                {{ item.groom_form.backlog_state }}
+                {{ item.groom_form.backlog_state.errors }}
+              </div>
+              <div class="col-md-4">
+                <label class="form-label" for="{{ item.groom_form.due_date.id_for_label }}">Due Date</label>
+                {{ item.groom_form.due_date }}
+                {{ item.groom_form.due_date.errors }}
+              </div>
+              <div class="col-md-4">
+                <label class="form-label" for="{{ item.groom_form.assigned_to.id_for_label }}">Assigned To</label>
+                {{ item.groom_form.assigned_to }}
+                {{ item.groom_form.assigned_to.errors }}
+              </div>
+              <div class="col-md-12">
+                <label class="form-label" for="{{ item.groom_form.description.id_for_label }}">Description</label>
+                {{ item.groom_form.description }}
+                {{ item.groom_form.description.errors }}
+              </div>
+              <div class="col-md-12">
+                <label class="form-label" for="{{ item.groom_form.acceptance_criteria.id_for_label }}">Acceptance Criteria</label>
+                {{ item.groom_form.acceptance_criteria }}
+                {{ item.groom_form.acceptance_criteria.errors }}
+              </div>
+            </div>
+            <button type="submit" class="btn btn-outline-primary btn-sm mt-3">Save Backlog Changes</button>
+          </form>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="alert alert-light border mb-0">
+    No backlog items are currently in {{ section.label|lower }}.
+  </div>
+  {% endif %}
+</section>
+{% endfor %}
+
+{% endif %}
+{% endblock %}

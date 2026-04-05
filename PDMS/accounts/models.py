@@ -27,6 +27,26 @@ class Profile(models.Model):
         return self.user.username
 
 class Task(models.Model):
+    ITEM_TYPE_CHOICES = [
+        ('story', 'Story'),
+        ('bug', 'Bug'),
+        ('task', 'Task'),
+    ]
+
+    PRIORITY_CHOICES = [
+        ('critical', 'Critical'),
+        ('high', 'High'),
+        ('medium', 'Medium'),
+        ('low', 'Low'),
+    ]
+
+    BACKLOG_STATE_CHOICES = [
+        ('backlog', 'Backlog'),
+        ('selected_for_sprint', 'Selected for Sprint'),
+        ('ready_for_test', 'Ready for Test'),
+        ('done', 'Done'),
+    ]
+
     STATUS_CHOICES = [
         ('todo', 'To Do'),
         ('in_progress', 'In Progress'),
@@ -34,7 +54,23 @@ class Task(models.Model):
     ]
 
     title = models.CharField(max_length=200)
+    item_type = models.CharField(
+        max_length=20,
+        choices=ITEM_TYPE_CHOICES,
+        default='story',
+    )
+    priority = models.CharField(
+        max_length=20,
+        choices=PRIORITY_CHOICES,
+        default='medium',
+    )
+    backlog_state = models.CharField(
+        max_length=30,
+        choices=BACKLOG_STATE_CHOICES,
+        default='backlog',
+    )
     description = models.TextField(blank=True)
+    acceptance_criteria = models.TextField(blank=True)
     due_date = models.DateField(null=True, blank=True)
     status = models.CharField(
         max_length=20,

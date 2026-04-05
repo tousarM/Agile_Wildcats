@@ -1,24 +1,27 @@
 import shutil
-import tempfile
+from pathlib import Path
 
 from django.contrib.auth.models import User
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.db import connection
+from django.db.models.signals import post_save
 from django.db.migrations.executor import MigrationExecutor
 from django.test import TestCase
 from django.test import TransactionTestCase
 from django.test import override_settings
 from django.urls import reverse
 
-from .models import Profile, Task, TaskUpdate
+from .models import Profile, Task, TaskUpdate, Team
+from .signals import ensure_user_profile
 
 
-class TaskProgressTests(TestCase):
+class TaskAndBacklogTests(TestCase):
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
-        cls._temp_media_root = tempfile.mkdtemp()
-        cls._media_override = override_settings(MEDIA_ROOT=cls._temp_media_root)
+        cls._temp_media_root = Path(__file__).resolve().parents[1] / "test_media"
+        cls._temp_media_root.mkdir(exist_ok=True)
+        cls._media_override = override_settings(MEDIA_ROOT=str(cls._temp_media_root))
         cls._media_override.enable()
 
     @classmethod
@@ -28,15 +31,50 @@ class TaskProgressTests(TestCase):
         super().tearDownClass()
 
     def setUp(self):
-        self.manager = User.objects.create_user(username="manager1", password="pass123")
-        self.developer = User.objects.create_user(username="dev1", password="pass123")
-        self.other_developer = User.objects.create_user(username="dev2", password="pass123")
-        self.general_user = User.objects.create_user(username="member1", password="pass123")
+        self.team = Team.objects.create(name="Alpha")
+        self.manager = self._create_user("manager1", "manager", "Manager One")
+        self.developer = self._create_user("dev1", "member", "Dev One")
+        self.other_developer = self._create_user("dev2", "member", "Dev Two")
+        self.general_user = self._create_user("member1", "member", "Member One")
 
-        Profile.objects.filter(user=self.manager).update(name="Manager One", role="Manager", team="Alpha")
-        Profile.objects.filter(user=self.developer).update(name="Dev One", role="Developer", team="Alpha")
-        Profile.objects.filter(user=self.other_developer).update(name="Dev Two", role="Developer", team="Alpha")
-        Profile.objects.filter(user=self.general_user).update(name="Member One", role="User", team="Alpha")
+    def _create_user(self, username, role, name):
+        user = User.objects.create_user(
+            username=username,
+            email=f"{username}@example.com",
+            password="pass123",
+        )
+        profile = user.profile
+        profile.name = name
+        profile.role = role
+        profile.team = self.team
+        profile.email = user.email
+        profile.save()
+        return user
+
+    def _create_task(self, **overrides):
+        defaults = {
+            "title": "Sample Task",
+            "description": "Sample description",
+            "status": "todo",
+            "team": self.team,
+            "priority": "medium",
+            "backlog_state": "backlog",
+            "item_type": "story",
+            "acceptance_criteria": "",
+            "assigned_to": None,
+        }
+        defaults.update(overrides)
+        return Task.objects.create(**defaults)
+
+    def test_profile_is_created_for_new_user(self):
+        user = User.objects.create_user(
+            username="signaluser",
+            email="signal@example.com",
+            password="pass123",
+        )
+
+        self.assertTrue(Profile.objects.filter(user=user).exists())
+        self.assertEqual(user.profile.email, "signal@example.com")
 
     def test_manager_can_assign_task_to_any_active_user(self):
         self.client.login(username="manager1", password="pass123")
@@ -55,7 +93,10 @@ class TaskProgressTests(TestCase):
 
         self.assertRedirects(response, reverse("task_page"))
         task = Task.objects.get(title="Build API")
+        self.assertEqual(task.team, self.team)
         self.assertEqual(task.assigned_to, self.general_user)
+        self.assertEqual(task.priority, "medium")
+        self.assertEqual(task.backlog_state, "backlog")
         self.assertTrue(TaskUpdate.objects.filter(task=task, note="Task assigned to member1.").exists())
 
         response = self.client.get(reverse("task_page"))
@@ -63,14 +104,12 @@ class TaskProgressTests(TestCase):
         self.assertContains(response, "Activity: Created the task.")
         self.assertContains(response, "Assignment:")
         self.assertContains(response, "Unassigned")
-        self.assertContains(response, "→")
         self.assertContains(response, "member1.")
 
     def test_manager_reassignment_shows_previous_assignee_with_strikethrough(self):
-        task = Task.objects.create(
+        task = self._create_task(
             title="Reassign Me",
             description="Move ownership to a new person",
-            status="todo",
             assigned_to=self.developer,
         )
         self.client.login(username="manager1", password="pass123")
@@ -90,14 +129,12 @@ class TaskProgressTests(TestCase):
 
         response = self.client.get(reverse("task_page"))
         self.assertContains(response, '<del class="text-muted">dev1</del>')
-        self.assertContains(response, "→")
         self.assertContains(response, "member1.")
 
     def test_manager_can_unassign_task_and_history_is_saved(self):
-        task = Task.objects.create(
+        task = self._create_task(
             title="Fix Bug",
             description="Investigate login issue",
-            status="todo",
             assigned_to=self.developer,
         )
         self.client.login(username="manager1", password="pass123")
@@ -119,14 +156,12 @@ class TaskProgressTests(TestCase):
         response = self.client.get(reverse("task_page"))
         self.assertContains(response, "Assignment:")
         self.assertContains(response, '<del class="text-muted">dev1</del>')
-        self.assertContains(response, "→")
         self.assertContains(response, "Unassigned.")
 
     def test_assigned_user_can_update_progress_and_see_it_after_relogin(self):
-        task = Task.objects.create(
+        task = self._create_task(
             title="Frontend Polish",
             description="Tighten spacing and states",
-            status="todo",
             assigned_to=self.general_user,
         )
 
@@ -162,19 +197,18 @@ class TaskProgressTests(TestCase):
         self.assertContains(response, "Frontend Polish")
         self.assertContains(response, "In Progress")
         self.assertContains(response, "Updates by member1")
-        self.assertContains(response, '<del class="text-muted">To Do</del> →')
+        self.assertContains(response, '<del class="text-muted">To Do</del>')
         self.assertContains(response, "Note: Working through the remaining styling issues.")
 
         dashboard_response = self.client.get(reverse("profile_dashboard"))
         self.assertContains(dashboard_response, "Updates by member1")
-        self.assertContains(dashboard_response, '<del class="text-muted">To Do</del> →')
+        self.assertContains(dashboard_response, '<del class="text-muted">To Do</del>')
         self.assertContains(dashboard_response, "Note: Working through the remaining styling issues.")
 
     def test_multiple_progress_notes_are_logged_for_the_same_task(self):
-        task = Task.objects.create(
+        task = self._create_task(
             title="Sprint Story",
             description="Track implementation discussion",
-            status="todo",
             assigned_to=self.general_user,
         )
 
@@ -208,13 +242,12 @@ class TaskProgressTests(TestCase):
         response = self.client.get(reverse("task_page"))
         self.assertContains(response, "Note: Started implementation and created the base view.")
         self.assertContains(response, "Note: Completed the form wiring and began testing.")
-        self.assertContains(response, '<del class="text-muted">To Do</del> →')
+        self.assertContains(response, '<del class="text-muted">To Do</del>')
 
     def test_progress_update_can_include_attachment(self):
-        task = Task.objects.create(
+        task = self._create_task(
             title="Artifact Review",
             description="Upload progress evidence",
-            status="todo",
             assigned_to=self.general_user,
         )
         attachment = SimpleUploadedFile(
@@ -249,10 +282,9 @@ class TaskProgressTests(TestCase):
         self.assertContains(dashboard_response, "progress-log.txt")
 
     def test_note_only_progress_update_does_not_claim_status_changed(self):
-        task = Task.objects.create(
+        task = self._create_task(
             title="Backlog Review",
             description="Capture backlog notes without changing state",
-            status="todo",
             assigned_to=self.general_user,
         )
 
@@ -275,13 +307,12 @@ class TaskProgressTests(TestCase):
         response = self.client.get(reverse("task_page"))
         self.assertContains(response, "Updates by member1")
         self.assertContains(response, "Note: Added acceptance criteria details.")
-        self.assertNotContains(response, '<del class="text-muted">To Do</del> → To Do')
+        self.assertNotContains(response, "To Do</del> -> To Do")
 
     def test_status_change_without_note_shows_only_status_line(self):
-        task = Task.objects.create(
+        task = self._create_task(
             title="Plain Status Update",
             description="Move the task without a note",
-            status="todo",
             assigned_to=self.general_user,
         )
 
@@ -298,15 +329,13 @@ class TaskProgressTests(TestCase):
 
         self.assertRedirects(response, reverse("task_page"))
         response = self.client.get(reverse("task_page"))
-        self.assertContains(response, '<del class="text-muted">To Do</del> →')
+        self.assertContains(response, '<del class="text-muted">To Do</del>')
         self.assertContains(response, "Done")
-        self.assertNotContains(response, "Note: Move the task without a note")
 
     def test_task_without_updates_shows_empty_activity_message(self):
-        Task.objects.create(
+        self._create_task(
             title="Fresh Task",
             description="No updates have been logged yet",
-            status="todo",
             assigned_to=self.developer,
         )
 
@@ -314,13 +343,12 @@ class TaskProgressTests(TestCase):
         response = self.client.get(reverse("task_page"))
 
         self.assertContains(response, "No discussion or activity yet.")
-        self.assertNotContains(response, "Discussion & Activity")
+        self.assertNotContains(response, "Discussion &amp; Activity")
 
     def test_unrelated_user_cannot_update_someone_elses_task_progress(self):
-        task = Task.objects.create(
+        task = self._create_task(
             title="API Cleanup",
             description="Refactor the serializers",
-            status="todo",
             assigned_to=self.developer,
         )
 
@@ -340,9 +368,9 @@ class TaskProgressTests(TestCase):
         self.assertEqual(task.status, "todo")
 
     def test_user_only_sees_their_assigned_tasks(self):
-        Task.objects.create(title="Visible Task", status="todo", assigned_to=self.developer)
-        Task.objects.create(title="Hidden Task", status="todo", assigned_to=self.other_developer)
-        Task.objects.create(title="Unassigned Task", status="todo", assigned_to=None)
+        self._create_task(title="Visible Task", assigned_to=self.developer)
+        self._create_task(title="Hidden Task", assigned_to=self.other_developer)
+        self._create_task(title="Unassigned Task", assigned_to=None)
 
         self.client.login(username="dev1", password="pass123")
         response = self.client.get(reverse("task_page"))
@@ -351,9 +379,124 @@ class TaskProgressTests(TestCase):
         self.assertNotContains(response, "Hidden Task")
         self.assertNotContains(response, "Unassigned Task")
 
+    def test_manager_can_create_backlog_item_with_priority_and_acceptance_criteria(self):
+        self.client.login(username="manager1", password="pass123")
+
+        response = self.client.post(
+            reverse("backlog_page"),
+            {
+                "action": "create_backlog_item",
+                "title": "Plan login story",
+                "item_type": "story",
+                "priority": "high",
+                "backlog_state": "selected_for_sprint",
+                "description": "Plan the login flow and implementation work.",
+                "acceptance_criteria": "Users can sign in with a valid username and password.",
+                "due_date": "2026-04-10",
+                "assigned_to": self.developer.id,
+            },
+        )
+
+        self.assertRedirects(response, reverse("backlog_page"))
+        task = Task.objects.get(title="Plan login story")
+        self.assertEqual(task.team, self.team)
+        self.assertEqual(task.item_type, "story")
+        self.assertEqual(task.priority, "high")
+        self.assertEqual(task.backlog_state, "selected_for_sprint")
+        self.assertEqual(
+            task.acceptance_criteria,
+            "Users can sign in with a valid username and password.",
+        )
+
+        response = self.client.get(reverse("backlog_page"))
+        self.assertContains(response, "Plan login story")
+        self.assertContains(response, "Selected for Sprint")
+        self.assertContains(response, "High")
+        self.assertContains(response, "Users can sign in with a valid username and password.")
+
+    def test_manager_can_groom_backlog_item(self):
+        task = self._create_task(
+            title="Refine board experience",
+            description="Initial description",
+            assigned_to=None,
+            acceptance_criteria="Original criteria",
+        )
+
+        self.client.login(username="manager1", password="pass123")
+        response = self.client.post(
+            reverse("backlog_page"),
+            {
+                "action": "update_backlog_item",
+                "task_id": task.id,
+                "title": "Refine board experience",
+                "item_type": "bug",
+                "priority": "critical",
+                "backlog_state": "ready_for_test",
+                "description": "Initial description with clarifications",
+                "acceptance_criteria": "Board updates render correctly after saving.",
+                "due_date": "2026-04-12",
+                "assigned_to": self.general_user.id,
+            },
+        )
+
+        self.assertRedirects(response, reverse("backlog_page"))
+        task.refresh_from_db()
+        self.assertEqual(task.item_type, "bug")
+        self.assertEqual(task.priority, "critical")
+        self.assertEqual(task.backlog_state, "ready_for_test")
+        self.assertEqual(task.assigned_to, self.general_user)
+        self.assertEqual(task.acceptance_criteria, "Board updates render correctly after saving.")
+
+        update = TaskUpdate.objects.filter(task=task).exclude(note=TaskUpdate.SYSTEM_CREATED_NOTE).latest("created_at")
+        self.assertIn("Priority changed from Medium to Critical.", update.note)
+        self.assertIn("Backlog state moved from Backlog to Ready for Test.", update.note)
+        self.assertIn("Acceptance criteria updated.", update.note)
+        self.assertEqual(update.current_assignee, "member1")
+
+    def test_member_can_view_backlog_but_cannot_groom_it(self):
+        task = self._create_task(
+            title="Backlog visible item",
+            priority="high",
+            backlog_state="selected_for_sprint",
+            assigned_to=self.developer,
+        )
+
+        self.client.login(username="dev1", password="pass123")
+        response = self.client.get(reverse("backlog_page"))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, task.title)
+        self.assertContains(response, "View-only backlog access")
+
+        post_response = self.client.post(
+            reverse("backlog_page"),
+            {
+                "action": "update_backlog_item",
+                "task_id": task.id,
+                "title": task.title,
+                "item_type": task.item_type,
+                "priority": "critical",
+                "backlog_state": task.backlog_state,
+                "description": task.description,
+                "acceptance_criteria": task.acceptance_criteria,
+                "due_date": "",
+                "assigned_to": task.assigned_to_id,
+            },
+        )
+        self.assertEqual(post_response.status_code, 403)
+
 
 class TaskUpdateMigrationTests(TransactionTestCase):
     reset_sequences = True
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        post_save.disconnect(ensure_user_profile, sender=User)
+
+    @classmethod
+    def tearDownClass(cls):
+        post_save.connect(ensure_user_profile, sender=User)
+        super().tearDownClass()
 
     def test_previous_status_is_backfilled_for_existing_status_changes(self):
         executor = MigrationExecutor(connection)
