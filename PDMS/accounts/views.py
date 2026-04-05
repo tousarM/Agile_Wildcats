@@ -13,6 +13,7 @@ from .forms import (
     TaskForm,
 )
 from .models import Profile, Task, TaskUpdate, Team, TeamInvite
+from datetime import date, timedelta
 
 
 def _get_profile(user):
@@ -224,7 +225,9 @@ def boards(request):
         'status_choices': Task.STATUS_CHOICES,
         'is_manager': is_manager,
         'team': profile.team,
-        'assignable_users': assignable_users
+        'assignable_users': assignable_users,
+        'today': date.today(),
+        'soon': date.today() + timedelta(days=3),
     })
 
 @login_required(login_url='login')

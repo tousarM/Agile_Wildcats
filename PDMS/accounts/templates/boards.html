@@ -19,6 +19,12 @@
   .task-card[data-hidden="true"] {
     display: none;
   }
+  .task-card.due-soon {
+    border-left: 3px solid #ffc107;
+  }
+  .task-card.overdue {
+    border-left: 3px solid #dc3545;
+  }
   @media (max-width: 850px) {
     .board-wrap {
       flex-wrap: wrap;
@@ -55,7 +61,8 @@
       {{ status_label }} <span class="badge bg-secondary col-count">{{ col_tasks|length }}</span>
     </h6>
     {% for task in col_tasks %}
-    <div class="card mb-2 task-card" data-assignee="{{ task.assigned_to.username|default:'__unassigned__' }}">
+      <div class="card mb-2 task-card {% if task.due_date %}{% if task.due_date < today %}overdue{% elif task.due_date <= soon %}due-soon{% endif %}{% endif %}"
+          data-assignee="{{ task.assigned_to.username|default:'__unassigned__' }}">
       <div class="card-body py-2 px-3">
         <div class="fw-semibold">{{ task.title }}</div>
         {% if task.due_date %}
