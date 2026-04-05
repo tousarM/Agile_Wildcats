@@ -1,20 +1,26 @@
 from django.contrib import admin
-
-# Register your models here.
-from django.contrib import admin
 from django.utils.html import format_html
-from .models import Profile, Task, TaskUpdate
+from .models import Profile, Task, TaskUpdate, Team, TeamInvite
 
 @admin.register(Profile)
 class ProfileAdmin(admin.ModelAdmin):
     list_display = ('user', 'name', 'role', 'team')
-    search_fields = ('name', 'role', 'team')
+    search_fields = ('name', 'role', 'user__username', 'team__name')
 
 @admin.register(Task)
 class TaskAdmin(admin.ModelAdmin):
-    list_display = ('title', 'colored_status', 'due_date', 'assigned_to', 'updated_at')
-    list_filter = ('status', 'due_date', 'updated_at')
-    search_fields = ('title', 'description')
+    list_display = (
+        'title',
+        'item_type',
+        'priority',
+        'backlog_state',
+        'colored_status',
+        'assigned_to',
+        'team',
+        'updated_at',
+    )
+    list_filter = ('item_type', 'priority', 'backlog_state', 'status', 'due_date', 'updated_at')
+    search_fields = ('title', 'description', 'acceptance_criteria', 'assigned_to__username', 'team__name')
 
     def colored_status(self, obj):
         colors = {
@@ -36,3 +42,16 @@ class TaskUpdateAdmin(admin.ModelAdmin):
     list_display = ('task', 'author', 'status', 'created_at')
     list_filter = ('status', 'created_at')
     search_fields = ('task__title', 'note', 'author__username')
+
+
+@admin.register(Team)
+class TeamAdmin(admin.ModelAdmin):
+    list_display = ('name', 'created_at')
+    search_fields = ('name',)
+
+
+@admin.register(TeamInvite)
+class TeamInviteAdmin(admin.ModelAdmin):
+    list_display = ('team', 'sender', 'recipient', 'status', 'created_at')
+    list_filter = ('status', 'created_at')
+    search_fields = ('team__name', 'sender__username', 'recipient__username')

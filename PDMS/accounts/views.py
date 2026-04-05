@@ -3,21 +3,141 @@ from django.contrib.auth.models import User
 from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied
-from .forms import RegisterForm, TaskForm, CreateTeamForm, InviteForm   # include TaskForm for tasks
+from django.db.models import Case, IntegerField, Value, When
+from .forms import (
+    BacklogGroomForm,
+    BacklogItemForm,
+    CreateTeamForm,
+    InviteForm,
+    RegisterForm,
+    TaskForm,
+)
 from .models import Profile, Task, TaskUpdate, Team, TeamInvite
 
 
 def _get_profile(user):
-    return Profile.objects.get(user=user)
+    profile, _ = Profile.objects.get_or_create(
+        user=user,
+        defaults={"email": user.email, "role": "member"},
+    )
+
+    if user.email and profile.email != user.email:
+        profile.email = user.email
+        profile.save(update_fields=["email"])
+
+    return profile
 
 
 def _is_manager(profile):
     return 'manager' in profile.role.lower()
 
 
-
 def _can_update_task(user, is_manager, task):
     return is_manager or task.assigned_to_id == user.id
+
+
+def _assignable_users_for_team(team):
+    return User.objects.filter(profile__team=team, is_active=True).order_by('username')
+
+
+def _team_tasks(team):
+    return (
+        Task.objects.filter(team=team)
+        .select_related('assigned_to')
+        .prefetch_related('updates__author')
+    )
+
+
+def _backlog_queryset(team):
+    priority_rank = Case(
+        When(priority='critical', then=Value(0)),
+        When(priority='high', then=Value(1)),
+        When(priority='medium', then=Value(2)),
+        When(priority='low', then=Value(3)),
+        default=Value(4),
+        output_field=IntegerField(),
+    )
+    backlog_state_rank = Case(
+        When(backlog_state='backlog', then=Value(0)),
+        When(backlog_state='selected_for_sprint', then=Value(1)),
+        When(backlog_state='ready_for_test', then=Value(2)),
+        When(backlog_state='done', then=Value(3)),
+        default=Value(4),
+        output_field=IntegerField(),
+    )
+    return _team_tasks(team).annotate(
+        priority_rank=priority_rank,
+        backlog_state_rank=backlog_state_rank,
+    ).order_by('backlog_state_rank', 'priority_rank', 'due_date', 'title')
+
+
+def _log_task_created(task, author):
+    TaskUpdate.objects.create(
+        task=task,
+        author=author,
+        status=task.status,
+        status_changed=False,
+        previous_status=None,
+        previous_assignee=None,
+        current_assignee=None,
+        note=TaskUpdate.SYSTEM_CREATED_NOTE,
+    )
+
+    if task.assigned_to:
+        TaskUpdate.objects.create(
+            task=task,
+            author=author,
+            status=task.status,
+            status_changed=False,
+            previous_status=None,
+            previous_assignee=None,
+            current_assignee=task.assigned_to.username,
+            note=f"{TaskUpdate.SYSTEM_ASSIGNED_PREFIX}{task.assigned_to.username}.",
+        )
+
+
+def _format_choice(choice_map, value, empty_label):
+    if not value:
+        return empty_label
+    return choice_map.get(value, value)
+
+
+def _build_backlog_change_note(original_values, task):
+    item_type_choices = dict(Task.ITEM_TYPE_CHOICES)
+    priority_choices = dict(Task.PRIORITY_CHOICES)
+    backlog_state_choices = dict(Task.BACKLOG_STATE_CHOICES)
+    changes = []
+
+    if original_values["title"] != task.title:
+        changes.append(f'Title updated from "{original_values["title"]}" to "{task.title}".')
+    if original_values["item_type"] != task.item_type:
+        changes.append(
+            "Item type changed from "
+            f'{_format_choice(item_type_choices, original_values["item_type"], "Unspecified")} '
+            f'to {task.get_item_type_display()}.'
+        )
+    if original_values["priority"] != task.priority:
+        changes.append(
+            "Priority changed from "
+            f'{_format_choice(priority_choices, original_values["priority"], "Unspecified")} '
+            f'to {task.get_priority_display()}.'
+        )
+    if original_values["backlog_state"] != task.backlog_state:
+        changes.append(
+            "Backlog state moved from "
+            f'{_format_choice(backlog_state_choices, original_values["backlog_state"], "Unspecified")} '
+            f'to {task.get_backlog_state_display()}.'
+        )
+    if original_values["description"] != task.description:
+        changes.append("Description updated.")
+    if original_values["acceptance_criteria"] != task.acceptance_criteria:
+        changes.append("Acceptance criteria updated.")
+    if original_values["due_date"] != task.due_date:
+        previous_due_date = original_values["due_date"].isoformat() if original_values["due_date"] else "No due date"
+        current_due_date = task.due_date.isoformat() if task.due_date else "No due date"
+        changes.append(f"Due date changed from {previous_due_date} to {current_due_date}.")
+
+    return " ".join(changes)
 
 
 def register(request):
@@ -29,12 +149,12 @@ def register(request):
                 email=form.cleaned_data['email'],
                 password=form.cleaned_data['password'],
             )
-            Profile.objects.create(
-                user=user,
-                name=form.cleaned_data.get('name', ''),
-                role='member',
-                team=None,
-            )
+            profile = _get_profile(user)
+            profile.name = form.cleaned_data.get('name', '')
+            profile.role = 'member'
+            profile.team = None
+            profile.email = form.cleaned_data['email']
+            profile.save()
             login(request, user)
             return redirect('welcome')
     else:
@@ -59,10 +179,7 @@ def login_view(request):
 
 @login_required(login_url='login')
 def welcome(request):
-    profile, _ = Profile.objects.get_or_create(
-        user=request.user,
-        defaults={'role': 'member'}
-    )
+    profile = _get_profile(request.user)
     pending_invites = TeamInvite.objects.filter(
         recipient=request.user, status='pending'
     ).select_related('team', 'sender')
@@ -84,7 +201,7 @@ def task_page(request):
 
     team = profile.team
 
-    assignable_users = User.objects.filter(profile__team=team, is_active=True).order_by('username')
+    assignable_users = _assignable_users_for_team(team)
 
     if request.method == 'POST':
         action = request.POST.get('action')
@@ -93,7 +210,7 @@ def task_page(request):
             if not is_manager:
                 raise PermissionDenied
 
-            task = get_object_or_404(Task, pk=request.POST.get('task_id'))
+            task = get_object_or_404(Task, pk=request.POST.get('task_id'), team=team)
             assigned_to_id = request.POST.get('assigned_to')
             previous_assignee = task.assigned_to
             task.assigned_to = assignable_users.filter(pk=assigned_to_id).first() if assigned_to_id else None
@@ -119,7 +236,7 @@ def task_page(request):
             return redirect('task_page')
 
         if action == 'update_progress':
-            task = get_object_or_404(Task, pk=request.POST.get('task_id'))
+            task = get_object_or_404(Task, pk=request.POST.get('task_id'), team=team)
 
             if not _can_update_task(request.user, is_manager, task):
                 raise PermissionDenied
@@ -164,34 +281,12 @@ def task_page(request):
                 task.assigned_to = request.user
             task.save()
 
-            TaskUpdate.objects.create(
-                task=task,
-                author=request.user,
-                status=task.status,
-                status_changed=False,
-                previous_status=None,
-                previous_assignee=None,
-                current_assignee=None,
-                note=TaskUpdate.SYSTEM_CREATED_NOTE,
-            )
-
-            if is_manager and task.assigned_to:
-                TaskUpdate.objects.create(
-                    task=task,
-                    author=request.user,
-                    status=task.status,
-                    status_changed=False,
-                    previous_status=None,
-                    previous_assignee=None,
-                    current_assignee=task.assigned_to.username,
-                    note=f"{TaskUpdate.SYSTEM_ASSIGNED_PREFIX}{task.assigned_to.username}.",
-                )
-
+            _log_task_created(task, request.user)
             return redirect('task_page')
     else:
         form = TaskForm(can_assign=is_manager, assignable_users=assignable_users)
 
-    tasks = Task.objects.filter(team=team).select_related('assigned_to').prefetch_related('updates__author')
+    tasks = _team_tasks(team)
     if not is_manager:
         tasks = tasks.filter(assigned_to=request.user)
 
@@ -206,10 +301,106 @@ def task_page(request):
 
 
 @login_required(login_url='login')
-def profile_dashboard(request):
-    # Full user profile dashboard
+def backlog_page(request):
     profile = _get_profile(request.user)
-    tasks = Task.objects.filter(assigned_to=request.user).select_related('assigned_to').prefetch_related('updates__author')
+    is_manager = _is_manager(profile)
+
+    if not profile.team:
+        return render(request, 'backlog.html', {'no_team': True})
+
+    team = profile.team
+    assignable_users = _assignable_users_for_team(team)
+    create_form = BacklogItemForm(assignable_users=assignable_users)
+    invalid_groom_task_id = None
+    invalid_groom_form = None
+
+    if request.method == 'POST':
+        if not is_manager:
+            raise PermissionDenied
+
+        action = request.POST.get('action')
+        if action == 'create_backlog_item':
+            create_form = BacklogItemForm(request.POST, request.FILES, assignable_users=assignable_users)
+            if create_form.is_valid():
+                task = create_form.save(commit=False)
+                task.team = team
+                task.save()
+                _log_task_created(task, request.user)
+                return redirect('backlog_page')
+        elif action == 'update_backlog_item':
+            task = get_object_or_404(Task, pk=request.POST.get('task_id'), team=team)
+            original_values = {
+                "title": task.title,
+                "item_type": task.item_type,
+                "priority": task.priority,
+                "backlog_state": task.backlog_state,
+                "description": task.description,
+                "acceptance_criteria": task.acceptance_criteria,
+                "due_date": task.due_date,
+                "assigned_to_id": task.assigned_to_id,
+                "assigned_to_username": task.assigned_to.username if task.assigned_to else None,
+            }
+            invalid_groom_task_id = task.id
+            invalid_groom_form = BacklogGroomForm(request.POST, instance=task, assignable_users=assignable_users)
+
+            if invalid_groom_form.is_valid():
+                task = invalid_groom_form.save()
+                note = _build_backlog_change_note(original_values, task)
+                assignee_changed = original_values["assigned_to_id"] != task.assigned_to_id
+
+                if note or assignee_changed:
+                    TaskUpdate.objects.create(
+                        task=task,
+                        author=request.user,
+                        status=task.status,
+                        status_changed=False,
+                        previous_status=None,
+                        previous_assignee=original_values["assigned_to_username"] if assignee_changed else None,
+                        current_assignee=task.assigned_to.username if assignee_changed and task.assigned_to else None,
+                        note=note,
+                    )
+
+                return redirect('backlog_page')
+
+    backlog_items = list(_backlog_queryset(team))
+    backlog_sections = []
+
+    for state_value, state_label in Task.BACKLOG_STATE_CHOICES:
+        items_in_state = [item for item in backlog_items if item.backlog_state == state_value]
+        if is_manager:
+            for item in items_in_state:
+                if invalid_groom_form is not None and item.id == invalid_groom_task_id:
+                    item.groom_form = invalid_groom_form
+                else:
+                    item.groom_form = BacklogGroomForm(instance=item, assignable_users=assignable_users)
+
+        backlog_sections.append(
+            {
+                "value": state_value,
+                "label": state_label,
+                "items": items_in_state,
+            }
+        )
+
+    return render(
+        request,
+        'backlog.html',
+        {
+            'create_form': create_form,
+            'backlog_sections': backlog_sections,
+            'is_manager': is_manager,
+        },
+    )
+
+
+@login_required(login_url='login')
+def profile_dashboard(request):
+    profile = _get_profile(request.user)
+    tasks = (
+        Task.objects.filter(assigned_to=request.user)
+        .select_related('assigned_to')
+        .prefetch_related('updates__author')
+    )
 
     return render(request, "profile_dashboard.html", {
         "profile": profile,
@@ -249,7 +440,7 @@ def create_team(request):
         form = CreateTeamForm(request.POST)
         if form.is_valid():
             team = Team.objects.create(name=form.cleaned_data['name'])
-            profile = request.user.profile
+            profile = _get_profile(request.user)
             profile.team = team
             profile.role = 'manager'
             profile.save()
@@ -261,23 +452,23 @@ def create_team(request):
 
 @login_required
 def team_page(request):
-    profile = request.user.profile
+    profile = _get_profile(request.user)
     if not profile.team:
         return redirect('home')
 
     team = profile.team
     members = Profile.objects.filter(team=team).select_related('user')
-    tasks = Task.objects.filter(team=team).select_related('assigned_to').order_by('status', 'due_date')
+    tasks = _backlog_queryset(team)
     invite_form = None
     invite_error = None
 
-    if profile.role == 'manager':
+    if is_manager := _is_manager(profile):
         if request.method == 'POST':
             invite_form = InviteForm(request.POST)
             if invite_form.is_valid():
                 username = invite_form.cleaned_data['username']
                 recipient = User.objects.get(username=username)
-                recipient_profile = recipient.profile
+                recipient_profile = _get_profile(recipient)
 
                 if recipient_profile.team == team:
                     invite_error = "That user is already in your team."
@@ -300,14 +491,14 @@ def team_page(request):
         'tasks': tasks,
         'invite_form': invite_form,
         'invite_error': invite_error,
-        'is_manager': profile.role == 'manager',
+        'is_manager': is_manager,
     })
 
 
 @login_required
 def accept_invite(request, invite_id):
     invite = get_object_or_404(TeamInvite, id=invite_id, recipient=request.user, status='pending')
-    profile = request.user.profile
+    profile = _get_profile(request.user)
     profile.team = invite.team
     profile.role = 'member'
     profile.save()
@@ -325,8 +516,8 @@ def reject_invite(request, invite_id):
 
 @login_required
 def remove_member(request, user_id):
-    profile = request.user.profile
-    if profile.role != 'manager':
+    profile = _get_profile(request.user)
+    if not _is_manager(profile):
         raise PermissionDenied
 
     target = get_object_or_404(Profile, user_id=user_id, team=profile.team)
@@ -341,10 +532,10 @@ def remove_member(request, user_id):
 
 @login_required
 def leave_team(request):
-    profile = request.user.profile
+    profile = _get_profile(request.user)
     if not profile.team:
         return redirect('home')
-    if profile.role == 'manager':
+    if _is_manager(profile):
         raise PermissionDenied
 
     profile.team = None
@@ -354,8 +545,8 @@ def leave_team(request):
 
 @login_required
 def delete_team(request):
-    profile = request.user.profile
-    if profile.role != 'manager':
+    profile = _get_profile(request.user)
+    if not _is_manager(profile):
         raise PermissionDenied
 
     team = profile.team

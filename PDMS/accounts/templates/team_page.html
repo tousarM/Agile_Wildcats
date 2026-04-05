@@ -3,13 +3,25 @@
 {% block title %}{{ team.name }}{% endblock %}
 
 {% block content %}
-<h2>{{ team.name }}</h2>
-<p class="text-muted">Team ID: <code>{{ team.id }}</code></p>
+<div class="d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-3">
+  <div>
+    <h2 class="mb-1">{{ team.name }}</h2>
+    <p class="text-muted mb-0">Team ID: <code>{{ team.id }}</code></p>
+  </div>
+  <a href="{% url 'backlog_page' %}" class="btn btn-outline-primary">Open Backlog</a>
+</div>
 <hr>
 
 <h5>Members</h5>
 <table class="table table-bordered">
-  <thead><tr><th>Name</th><th>Username</th><th>Role</th>{% if is_manager %}<th></th>{% endif %}</tr></thead>
+  <thead>
+    <tr>
+      <th>Name</th>
+      <th>Username</th>
+      <th>Role</th>
+      {% if is_manager %}<th></th>{% endif %}
+    </tr>
+  </thead>
   <tbody>
     {% for member in members %}
     <tr>
@@ -49,12 +61,15 @@
 {% endif %}
 
 <hr>
-<h5>Team Tasks</h5>
+<h5>Team Backlog Snapshot</h5>
 {% if tasks %}
 <table class="table table-bordered">
   <thead>
     <tr>
       <th>Title</th>
+      <th>Type</th>
+      <th>Priority</th>
+      <th>Backlog Stage</th>
       <th>Status</th>
       <th>Assigned To</th>
       <th>Due Date</th>
@@ -64,6 +79,9 @@
     {% for task in tasks %}
     <tr>
       <td>{{ task.title }}</td>
+      <td>{{ task.get_item_type_display }}</td>
+      <td>{{ task.get_priority_display }}</td>
+      <td>{{ task.get_backlog_state_display }}</td>
       <td>
         {% if task.status == 'done' %}
           <span class="badge bg-success">{{ task.get_status_display }}</span>
@@ -74,13 +92,13 @@
         {% endif %}
       </td>
       <td>{{ task.assigned_to.username|default:"Unassigned" }}</td>
-      <td>{{ task.due_date|default:"—" }}</td>
+      <td>{{ task.due_date|default:"-" }}</td>
     </tr>
     {% endfor %}
   </tbody>
 </table>
 {% else %}
-<p class="text-muted">No tasks yet.</p>
+<p class="text-muted">No backlog items yet.</p>
 {% endif %}
 
 {% if is_manager %}

@@ -3,89 +3,103 @@
 {% block title %}User Dashboard{% endblock %}
 
 {% block content %}
-<h2>{{ profile.name }}'s Dashboard</h2>
+<h2>{{ profile.name|default:profile.user.username }}'s Dashboard</h2>
 <p><strong>Username:</strong> {{ profile.user.username }}</p>
 <p><strong>Email:</strong> {{ profile.user.email }}</p>
 <p><strong>Role:</strong> {{ profile.role }}</p>
-<p><strong>Team:</strong> {{ profile.team }}</p>
-{% if profile.contact_number %}
-<p><strong>Contact:</strong> {{ profile.contact_number }}</p>
-{% endif %}
+<p><strong>Team:</strong> {{ profile.team|default:"No team yet" }}</p>
 
 <hr>
 <h3>Assigned Tasks</h3>
 <ul class="list-unstyled">
   {% for task in tasks %}
-    <li class="mb-4 p-3 border rounded bg-white">
-      <strong>{{ task.title }}</strong><br>
-      Status: {{ task.get_status_display }}<br>
-      Due: {{ task.due_date|default:"No due date" }}<br>
-      Assigned to:
-      {% if task.assigned_to %}
-        {{ task.assigned_to.username }}
+  <li class="mb-4 p-3 border rounded bg-white shadow-sm">
+    <div class="d-flex flex-wrap gap-2 mb-2">
+      <span class="badge text-bg-dark">{{ task.get_item_type_display }}</span>
+      {% if task.priority == "critical" %}
+      <span class="badge text-bg-danger">{{ task.get_priority_display }}</span>
+      {% elif task.priority == "high" %}
+      <span class="badge bg-warning text-dark">{{ task.get_priority_display }}</span>
+      {% elif task.priority == "medium" %}
+      <span class="badge text-bg-primary">{{ task.get_priority_display }}</span>
       {% else %}
-        Unassigned
+      <span class="badge text-bg-secondary">{{ task.get_priority_display }}</span>
       {% endif %}
-      <br>
-      Last updated: {{ task.updated_at|date:"M d, Y g:i A" }}<br>
-      {% if task.description %}
-        {{ task.description }}<br>
-      {% endif %}
+      <span class="badge text-bg-light">{{ task.get_backlog_state_display }}</span>
+    </div>
 
-      <div class="mt-2">
-        {% with updates=task.updates.all %}
-          {% if updates %}
-            <strong>Discussion & Activity</strong>
-            <div class="mt-2">
-              {% for update in updates %}
-                <div class="mb-3">
-                  <div>{{ update.created_at|date:"M d, Y g:i A" }} - Updates by {{ update.actor_name }}</div>
-                  <div class="ms-3">
-                    {% if update.has_status_line %}
-                      <div>
-                        Status:
-                        {% if update.previous_status_display %}
-                          <del class="text-muted">{{ update.previous_status_display }}</del> →
-                        {% endif %}
-                        {{ update.get_status_display }}
-                      </div>
-                    {% endif %}
-                    {% if update.note_detail %}
-                      <div>Note: {{ update.note_detail }}</div>
-                    {% endif %}
-                    {% if update.has_attachment_line %}
-                      <div>
-                        Attachment:
-                        <a href="{{ update.attachment.url }}" download>{{ update.attachment_name }}</a>
-                      </div>
-                    {% endif %}
-                    {% if update.has_assignment_line %}
-                      <div>
-                        Assignment:
-                        {% if update.previous_assignee %}
-                          <del class="text-muted">{{ update.previous_assignee_display }}</del>
-                        {% else %}
-                          {{ update.previous_assignee_display }}
-                        {% endif %}
-                        →
-                        {{ update.current_assignee_display }}.
-                      </div>
-                    {% endif %}
-                    {% if update.activity_detail %}
-                      <div>Activity: {{ update.activity_detail }}</div>
-                    {% endif %}
-                  </div>
-                </div>
-              {% endfor %}
+    <strong>{{ task.title }}</strong><br>
+    Status: {{ task.get_status_display }}<br>
+    Due: {{ task.due_date|default:"No due date" }}<br>
+    Assigned to:
+    {% if task.assigned_to %}
+      {{ task.assigned_to.username }}
+    {% else %}
+      Unassigned
+    {% endif %}
+    <br>
+    Last updated: {{ task.updated_at|date:"M d, Y g:i A" }}<br>
+    {% if task.description %}
+      {{ task.description }}<br>
+    {% endif %}
+    {% if task.acceptance_criteria %}
+      Acceptance Criteria: {{ task.acceptance_criteria|linebreaksbr }}<br>
+    {% endif %}
+
+    <div class="mt-2">
+      {% with updates=task.updates.all %}
+        {% if updates %}
+        <strong>Discussion &amp; Activity</strong>
+        <div class="mt-2">
+          {% for update in updates %}
+          <div class="mb-3">
+            <div>{{ update.created_at|date:"M d, Y g:i A" }} - Updates by {{ update.actor_name }}</div>
+            <div class="ms-3">
+              {% if update.has_status_line %}
+              <div>
+                Status:
+                {% if update.previous_status_display %}
+                <del class="text-muted">{{ update.previous_status_display }}</del> ->
+                {% endif %}
+                {{ update.get_status_display }}
+              </div>
+              {% endif %}
+              {% if update.note_detail %}
+              <div>Note: {{ update.note_detail }}</div>
+              {% endif %}
+              {% if update.has_attachment_line %}
+              <div>
+                Attachment:
+                <a href="{{ update.attachment.url }}" download>{{ update.attachment_name }}</a>
+              </div>
+              {% endif %}
+              {% if update.has_assignment_line %}
+              <div>
+                Assignment:
+                {% if update.previous_assignee %}
+                <del class="text-muted">{{ update.previous_assignee_display }}</del>
+                {% else %}
+                {{ update.previous_assignee_display }}
+                {% endif %}
+                ->
+                {{ update.current_assignee_display }}.
+              </div>
+              {% endif %}
+              {% if update.activity_detail %}
+              <div>Activity: {{ update.activity_detail }}</div>
+              {% endif %}
             </div>
-          {% else %}
-            <span>No discussion or activity yet.</span>
-          {% endif %}
-        {% endwith %}
-      </div>
-    </li>
+          </div>
+          {% endfor %}
+        </div>
+        {% else %}
+        <span>No discussion or activity yet.</span>
+        {% endif %}
+      {% endwith %}
+    </div>
+  </li>
   {% empty %}
-    <li>No tasks assigned.</li>
+  <li>No tasks assigned.</li>
   {% endfor %}
 </ul>
 {% endblock %}
