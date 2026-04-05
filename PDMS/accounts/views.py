@@ -249,6 +249,37 @@ def welcome(request):
 
 
 @login_required(login_url='login')
+def boards(request):
+    profile = _get_profile(request.user)
+    is_manager = _is_manager(profile)
+
+    if not profile.team:
+        return render(request, 'boards.html', {'no_team': True})
+
+    tasks = (
+        Task.objects
+        .filter(team=profile.team)
+        .select_related('assigned_to')
+        .prefetch_related('updates__author')
+        .order_by('due_date', 'title')
+    )
+
+    if not is_manager:
+        tasks = tasks.filter(assigned_to=request.user)
+
+    board_columns = [
+        (key, label, [t for t in tasks if t.status == key])
+        for key, label in Task.STATUS_CHOICES
+    ]
+
+    return render(request, 'boards.html', {
+        'board_columns': board_columns,
+        'status_choices': Task.STATUS_CHOICES,
+        'is_manager': is_manager,
+        'team': profile.team,
+    })
+
+@login_required(login_url='login')
 def task_page(request):
     profile = _get_profile(request.user)
     is_manager = _is_manager(profile)
