@@ -631,6 +631,80 @@ class TaskAndBacklogTests(TestCase):
         self.assertContains(sprint_response, "Planning Sprint")
         self.assertContains(sprint_response, "Move me into sprint")
 
+    def test_sprint_board_can_be_filtered_to_single_sprint(self):
+        first_sprint = self._create_sprint(name="Sprint Alpha")
+        second_sprint = self._create_sprint(
+            name="Sprint Beta",
+            start_date="2026-04-21",
+            end_date="2026-05-02",
+        )
+        self._create_task(
+            title="Alpha ticket",
+            sprint=first_sprint,
+            backlog_state="selected_for_sprint",
+        )
+        self._create_task(
+            title="Beta ticket",
+            sprint=second_sprint,
+            backlog_state="selected_for_sprint",
+        )
+
+        self.client.login(username="manager1", password="pass123")
+        response = self.client.get(
+            reverse("sprint_board_page"),
+            {"sprint": str(second_sprint.id)},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.context["sprints"]), 1)
+        self.assertEqual(response.context["sprints"][0].id, second_sprint.id)
+        self.assertContains(response, "View by Sprint")
+        self.assertContains(response, "Sprint Beta")
+        self.assertContains(response, "Beta ticket")
+        self.assertNotContains(response, "Alpha ticket")
+        self.assertContains(response, "Show All")
+
+    def test_board_tab_can_be_filtered_to_single_sprint(self):
+        first_sprint = self._create_sprint(name="Board Sprint Alpha")
+        second_sprint = self._create_sprint(
+            name="Board Sprint Beta",
+            start_date="2026-04-21",
+            end_date="2026-05-02",
+        )
+        self._create_task(
+            title="Alpha board ticket",
+            sprint=first_sprint,
+            backlog_state="selected_for_sprint",
+            status="todo",
+        )
+        self._create_task(
+            title="Beta board ticket",
+            sprint=second_sprint,
+            backlog_state="selected_for_sprint",
+            status="in_progress",
+        )
+
+        self.client.login(username="manager1", password="pass123")
+        response = self.client.get(
+            reverse("boards"),
+            {"sprint": str(second_sprint.id)},
+        )
+
+        filtered_titles = [
+            task.title
+            for _, _, column_tasks in response.context["board_columns"]
+            for task in column_tasks
+        ]
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "View by Sprint")
+        self.assertContains(response, "Track tickets by workflow state for Board Sprint Beta.")
+        self.assertContains(response, "Beta board ticket")
+        self.assertNotContains(response, "Alpha board ticket")
+        self.assertIn("Beta board ticket", filtered_titles)
+        self.assertNotIn("Alpha board ticket", filtered_titles)
+        self.assertContains(response, "Show All")
+
     def test_member_can_view_sprint_board_but_cannot_manage_sprints(self):
         sprint = self._create_sprint(name="Visible Sprint")
         self._create_task(title="Sprint board ticket", sprint=sprint, backlog_state="selected_for_sprint")

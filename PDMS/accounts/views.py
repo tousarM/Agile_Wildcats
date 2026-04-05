@@ -105,6 +105,12 @@ def _sync_task_backlog_state(task):
         task.backlog_state = 'backlog'
 
 
+def _redirect_to_sprint_board(request, selected_sprint_id=""):
+    if selected_sprint_id:
+        return redirect(f"{request.path}?sprint={selected_sprint_id}")
+    return redirect('sprint_board_page')
+
+
 def _log_task_created(task, author):
     TaskUpdate.objects.create(
         task=task,
@@ -256,16 +262,22 @@ def boards(request):
     if not profile.team:
         return render(request, 'boards.html', {'no_team': True})
 
-    tasks = (
-        Task.objects
-        .filter(team=profile.team)
-        .select_related('assigned_to')
-        .prefetch_related('updates__author')
-        .order_by('due_date', 'title')
-    )
+    team = profile.team
+    filter_sprints = list(_sprint_queryset(team))
+    selected_sprint_id = request.GET.get('sprint', '').strip()
+    selected_sprint = next((sprint for sprint in filter_sprints if str(sprint.id) == selected_sprint_id), None)
+
+    tasks = _team_tasks(team)
 
     if not is_manager:
         tasks = tasks.filter(assigned_to=request.user)
+
+    if selected_sprint is not None:
+        tasks = tasks.filter(sprint=selected_sprint)
+    else:
+        selected_sprint_id = ''
+
+    tasks = tasks.order_by('due_date', 'title')
 
     board_columns = [
         (key, label, [t for t in tasks if t.status == key])
@@ -276,7 +288,10 @@ def boards(request):
         'board_columns': board_columns,
         'status_choices': Task.STATUS_CHOICES,
         'is_manager': is_manager,
-        'team': profile.team,
+        'team': team,
+        'filter_sprints': filter_sprints,
+        'selected_sprint_id': selected_sprint_id,
+        'selected_sprint': selected_sprint,
     })
 
 @login_required(login_url='login')
@@ -526,6 +541,12 @@ def sprint_board_page(request):
         return render(request, 'sprints.html', {'no_team': True})
 
     team = profile.team
+    filter_sprints = list(_sprint_queryset(team))
+    selected_sprint_id = request.GET.get('sprint', '').strip()
+    selected_sprint = next((sprint for sprint in filter_sprints if str(sprint.id) == selected_sprint_id), None)
+    if selected_sprint is None:
+        selected_sprint_id = ''
+
     create_form = SprintForm(team=team)
     invalid_status_sprint_id = None
     invalid_status_form = None
@@ -541,14 +562,20 @@ def sprint_board_page(request):
                 sprint = create_form.save(commit=False)
                 sprint.team = team
                 sprint.save()
-                return redirect('sprint_board_page')
+                return _redirect_to_sprint_board(
+                    request,
+                    request.POST.get('selected_sprint', '').strip(),
+                )
         elif action == 'update_sprint_status':
             sprint = get_object_or_404(Sprint, pk=request.POST.get('sprint_id'), team=team)
             invalid_status_sprint_id = sprint.id
             invalid_status_form = SprintStatusForm(request.POST, instance=sprint)
             if invalid_status_form.is_valid():
                 invalid_status_form.save()
-                return redirect('sprint_board_page')
+                return _redirect_to_sprint_board(
+                    request,
+                    request.POST.get('selected_sprint', '').strip(),
+                )
         elif action == 'delete_sprint':
             sprint = get_object_or_404(Sprint, pk=request.POST.get('sprint_id'), team=team)
             sprint_tasks = list(_team_tasks(team).filter(sprint=sprint))
@@ -563,10 +590,13 @@ def sprint_board_page(request):
                     f"Sprint changed from {sprint.name} to Product Backlog.",
                 )
 
+            selected_sprint_id = request.POST.get('selected_sprint', '').strip()
+            if selected_sprint_id == str(sprint.id):
+                selected_sprint_id = ''
             sprint.delete()
-            return redirect('sprint_board_page')
+            return _redirect_to_sprint_board(request, selected_sprint_id)
 
-    sprints = list(_sprint_queryset(team))
+    sprints = [selected_sprint] if selected_sprint else filter_sprints
     for sprint in sprints:
         sprint.board_tasks = list(_ordered_tasks(_team_tasks(team).filter(sprint=sprint)))
         if is_manager:
@@ -582,6 +612,8 @@ def sprint_board_page(request):
             'create_form': create_form,
             'is_manager': is_manager,
             'sprints': sprints,
+            'filter_sprints': filter_sprints,
+            'selected_sprint_id': selected_sprint_id,
             'backlog_count': Task.objects.filter(team=team, sprint__isnull=True).count(),
         },
     )

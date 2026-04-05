@@ -34,6 +34,34 @@
   {% endif %}
 </div>
 
+{% if filter_sprints %}
+<div class="card shadow-sm mb-4">
+  <div class="card-body">
+    <form method="get" class="row g-3 align-items-end">
+      <div class="col-sm-8 col-md-6 col-lg-4">
+        <label class="form-label" for="sprint-filter">View by Sprint</label>
+        <select id="sprint-filter" name="sprint" class="form-select">
+          <option value="">All Sprints</option>
+          {% for filter_sprint in filter_sprints %}
+          <option value="{{ filter_sprint.id }}" {% if selected_sprint_id == filter_sprint.id|stringformat:"s" %}selected{% endif %}>
+            {{ filter_sprint.name }} ({{ filter_sprint.get_status_display }})
+          </option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-auto">
+        <button type="submit" class="btn btn-outline-primary">Apply Filter</button>
+      </div>
+      {% if selected_sprint_id %}
+      <div class="col-auto">
+        <a href="{% url 'sprint_board_page' %}" class="btn btn-outline-secondary">Show All</a>
+      </div>
+      {% endif %}
+    </form>
+  </div>
+</div>
+{% endif %}
+
 {% if is_manager %}
 <div class="card shadow-sm mb-4">
   <div class="card-body">
@@ -41,6 +69,7 @@
     <form method="post">
       {% csrf_token %}
       <input type="hidden" name="action" value="create_sprint">
+      <input type="hidden" name="selected_sprint" value="{{ selected_sprint_id }}">
       {% if create_form.non_field_errors %}
       <div class="alert alert-danger">{{ create_form.non_field_errors }}</div>
       {% endif %}
@@ -98,6 +127,7 @@
               {% csrf_token %}
               <input type="hidden" name="action" value="update_sprint_status">
               <input type="hidden" name="sprint_id" value="{{ sprint.id }}">
+              <input type="hidden" name="selected_sprint" value="{{ selected_sprint_id }}">
               <div class="flex-grow-1">
                 <label class="form-label small mb-1" for="{{ sprint.status_form.status.id_for_label }}">Sprint State</label>
                 {{ sprint.status_form.status }}
@@ -109,6 +139,7 @@
               {% csrf_token %}
               <input type="hidden" name="action" value="delete_sprint">
               <input type="hidden" name="sprint_id" value="{{ sprint.id }}">
+              <input type="hidden" name="selected_sprint" value="{{ selected_sprint_id }}">
               <button type="submit" class="btn btn-sm btn-danger">Delete Sprint</button>
             </form>
           </div>
