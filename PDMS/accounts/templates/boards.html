@@ -16,6 +16,9 @@
     border-radius: 6px;
     padding: 0.75rem;
   }
+  .task-card[data-hidden="true"] {
+    display: none;
+  }
   @media (max-width: 850px) {
     .board-wrap {
       flex-wrap: wrap;
@@ -33,13 +36,26 @@
   <a href="{% url 'create_team' %}" class="alert-link">Create a team</a> or wait for an invitation.
 </div>
 {% else %}
-<h2>{{ team.name }} — Board</h2>
+
+<div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
+  <h2 class="mb-0">{{ team.name }} — Board</h2>
+  <select id="filter-assignee" class="form-select form-select-sm" style="width: auto;">
+    <option value="">All members</option>
+    {% for member in assignable_users %}
+      <option value="{{ member.username }}">{{ member.username }}</option>
+    {% endfor %}
+    <option value="__unassigned__">Unassigned</option>
+  </select>
+</div>
+
 <div class="board-wrap">
   {% for status_key, status_label, col_tasks in board_columns %}
   <div class="board-col">
-    <h6 class="text-uppercase text-muted mb-3">{{ status_label }} <span class="badge bg-secondary">{{ col_tasks|length }}</span></h6>
+    <h6 class="text-uppercase text-muted mb-3">
+      {{ status_label }} <span class="badge bg-secondary col-count">{{ col_tasks|length }}</span>
+    </h6>
     {% for task in col_tasks %}
-    <div class="card mb-2">
+    <div class="card mb-2 task-card" data-assignee="{{ task.assigned_to.username|default:'__unassigned__' }}">
       <div class="card-body py-2 px-3">
         <div class="fw-semibold">{{ task.title }}</div>
         {% if task.due_date %}
@@ -56,5 +72,21 @@
   </div>
   {% endfor %}
 </div>
+
+<script>
+  document.getElementById('filter-assignee').addEventListener('change', function () {
+    const assignee = this.value;
+    document.querySelectorAll('.board-col').forEach(col => {
+      let visible = 0;
+      col.querySelectorAll('.task-card').forEach(card => {
+        const show = !assignee || card.dataset.assignee === assignee;
+        card.dataset.hidden = show ? 'false' : 'true';
+        if (show) visible++;
+      });
+      col.querySelector('.col-count').textContent = visible;
+    });
+  });
+</script>
+
 {% endif %}
 {% endblock %}

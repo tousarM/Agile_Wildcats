@@ -207,19 +207,24 @@ def boards(request):
         .order_by('due_date', 'title')
     )
 
-    if not is_manager:
-        tasks = tasks.filter(assigned_to=request.user)
+    # if not is_manager:
+    #     tasks = tasks.filter(assigned_to=request.user)
 
     board_columns = [
         (key, label, [t for t in tasks if t.status == key])
         for key, label in Task.STATUS_CHOICES
     ]
 
+    assignable_users = User.objects.filter(
+        profile__team=profile.team, is_active=True
+    ).order_by('username')
+
     return render(request, 'boards.html', {
         'board_columns': board_columns,
         'status_choices': Task.STATUS_CHOICES,
         'is_manager': is_manager,
         'team': profile.team,
+        'assignable_users': assignable_users
     })
 
 @login_required(login_url='login')
