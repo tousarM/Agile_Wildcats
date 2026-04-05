@@ -10,9 +10,11 @@ from .forms import (
     CreateTeamForm,
     InviteForm,
     RegisterForm,
+    SprintForm,
+    SprintStatusForm,
     TaskForm,
 )
-from .models import Profile, Task, TaskUpdate, Team, TeamInvite
+from .models import Profile, Sprint, Task, TaskUpdate, Team, TeamInvite
 
 
 def _get_profile(user):
@@ -40,15 +42,23 @@ def _assignable_users_for_team(team):
     return User.objects.filter(profile__team=team, is_active=True).order_by('username')
 
 
+def _available_sprints_for_team(team, include_closed=False):
+    sprints = Sprint.objects.filter(team=team).order_by('start_date', 'name')
+    if not include_closed:
+        sprints = sprints.exclude(status='closed')
+    return sprints
+
+
 def _team_tasks(team):
     return (
         Task.objects.filter(team=team)
         .select_related('assigned_to')
+        .select_related('sprint')
         .prefetch_related('updates__author')
     )
 
 
-def _backlog_queryset(team):
+def _ordered_tasks(queryset):
     priority_rank = Case(
         When(priority='critical', then=Value(0)),
         When(priority='high', then=Value(1)),
@@ -65,10 +75,34 @@ def _backlog_queryset(team):
         default=Value(4),
         output_field=IntegerField(),
     )
-    return _team_tasks(team).annotate(
+    return queryset.annotate(
         priority_rank=priority_rank,
         backlog_state_rank=backlog_state_rank,
     ).order_by('backlog_state_rank', 'priority_rank', 'due_date', 'title')
+
+
+def _backlog_queryset(team):
+    return _ordered_tasks(_team_tasks(team).filter(sprint__isnull=True))
+
+
+def _sprint_queryset(team):
+    status_rank = Case(
+        When(status='active', then=Value(0)),
+        When(status='planned', then=Value(1)),
+        When(status='closed', then=Value(2)),
+        default=Value(3),
+        output_field=IntegerField(),
+    )
+    return Sprint.objects.filter(team=team).annotate(
+        status_rank=status_rank,
+    ).order_by('status_rank', 'start_date', 'name')
+
+
+def _sync_task_backlog_state(task):
+    if task.sprint_id and task.backlog_state == 'backlog':
+        task.backlog_state = 'selected_for_sprint'
+    elif not task.sprint_id and task.backlog_state == 'selected_for_sprint':
+        task.backlog_state = 'backlog'
 
 
 def _log_task_created(task, author):
@@ -96,10 +130,27 @@ def _log_task_created(task, author):
         )
 
 
+def _log_task_note(task, author, note):
+    TaskUpdate.objects.create(
+        task=task,
+        author=author,
+        status=task.status,
+        status_changed=False,
+        previous_status=None,
+        previous_assignee=None,
+        current_assignee=None,
+        note=note,
+    )
+
+
 def _format_choice(choice_map, value, empty_label):
     if not value:
         return empty_label
     return choice_map.get(value, value)
+
+
+def _format_sprint_name(sprint_name):
+    return sprint_name or "Product Backlog"
 
 
 def _build_backlog_change_note(original_values, task):
@@ -127,6 +178,12 @@ def _build_backlog_change_note(original_values, task):
             "Backlog state moved from "
             f'{_format_choice(backlog_state_choices, original_values["backlog_state"], "Unspecified")} '
             f'to {task.get_backlog_state_display()}.'
+        )
+    if original_values["sprint_id"] != task.sprint_id:
+        changes.append(
+            "Sprint changed from "
+            f'{_format_sprint_name(original_values["sprint_name"])} '
+            f'to {_format_sprint_name(task.sprint.name if task.sprint else None)}.'
         )
     if original_values["description"] != task.description:
         changes.append("Description updated.")
@@ -268,6 +325,14 @@ def task_page(request):
 
             return redirect('task_page')
 
+        if action == 'delete_task':
+            if not is_manager:
+                raise PermissionDenied
+
+            task = get_object_or_404(Task, pk=request.POST.get('task_id'), team=team)
+            task.delete()
+            return redirect('task_page')
+
         form = TaskForm(
             request.POST,
             request.FILES,
@@ -310,7 +375,11 @@ def backlog_page(request):
 
     team = profile.team
     assignable_users = _assignable_users_for_team(team)
-    create_form = BacklogItemForm(assignable_users=assignable_users)
+    available_sprints = _available_sprints_for_team(team)
+    create_form = BacklogItemForm(
+        assignable_users=assignable_users,
+        available_sprints=available_sprints,
+    )
     invalid_groom_task_id = None
     invalid_groom_form = None
 
@@ -320,20 +389,28 @@ def backlog_page(request):
 
         action = request.POST.get('action')
         if action == 'create_backlog_item':
-            create_form = BacklogItemForm(request.POST, request.FILES, assignable_users=assignable_users)
+            create_form = BacklogItemForm(
+                request.POST,
+                request.FILES,
+                assignable_users=assignable_users,
+                available_sprints=available_sprints,
+            )
             if create_form.is_valid():
                 task = create_form.save(commit=False)
                 task.team = team
+                _sync_task_backlog_state(task)
                 task.save()
                 _log_task_created(task, request.user)
                 return redirect('backlog_page')
         elif action == 'update_backlog_item':
-            task = get_object_or_404(Task, pk=request.POST.get('task_id'), team=team)
+            task = get_object_or_404(Task, pk=request.POST.get('task_id'), team=team, sprint__isnull=True)
             original_values = {
                 "title": task.title,
                 "item_type": task.item_type,
                 "priority": task.priority,
                 "backlog_state": task.backlog_state,
+                "sprint_id": task.sprint_id,
+                "sprint_name": task.sprint.name if task.sprint else None,
                 "description": task.description,
                 "acceptance_criteria": task.acceptance_criteria,
                 "due_date": task.due_date,
@@ -341,10 +418,17 @@ def backlog_page(request):
                 "assigned_to_username": task.assigned_to.username if task.assigned_to else None,
             }
             invalid_groom_task_id = task.id
-            invalid_groom_form = BacklogGroomForm(request.POST, instance=task, assignable_users=assignable_users)
+            invalid_groom_form = BacklogGroomForm(
+                request.POST,
+                instance=task,
+                assignable_users=assignable_users,
+                available_sprints=available_sprints,
+            )
 
             if invalid_groom_form.is_valid():
-                task = invalid_groom_form.save()
+                task = invalid_groom_form.save(commit=False)
+                _sync_task_backlog_state(task)
+                task.save()
                 note = _build_backlog_change_note(original_values, task)
                 assignee_changed = original_values["assigned_to_id"] != task.assigned_to_id
 
@@ -358,9 +442,13 @@ def backlog_page(request):
                         previous_assignee=original_values["assigned_to_username"] if assignee_changed else None,
                         current_assignee=task.assigned_to.username if assignee_changed and task.assigned_to else None,
                         note=note,
-                    )
+                )
 
                 return redirect('backlog_page')
+        elif action == 'delete_backlog_item':
+            task = get_object_or_404(Task, pk=request.POST.get('task_id'), team=team, sprint__isnull=True)
+            task.delete()
+            return redirect('backlog_page')
 
     backlog_items = list(_backlog_queryset(team))
     backlog_sections = []
@@ -372,7 +460,11 @@ def backlog_page(request):
                 if invalid_groom_form is not None and item.id == invalid_groom_task_id:
                     item.groom_form = invalid_groom_form
                 else:
-                    item.groom_form = BacklogGroomForm(instance=item, assignable_users=assignable_users)
+                    item.groom_form = BacklogGroomForm(
+                        instance=item,
+                        assignable_users=assignable_users,
+                        available_sprints=available_sprints,
+                    )
 
         backlog_sections.append(
             {
@@ -389,6 +481,77 @@ def backlog_page(request):
             'create_form': create_form,
             'backlog_sections': backlog_sections,
             'is_manager': is_manager,
+            'sprint_count': Sprint.objects.filter(team=team).count(),
+        },
+    )
+
+
+@login_required(login_url='login')
+def sprint_board_page(request):
+    profile = _get_profile(request.user)
+    is_manager = _is_manager(profile)
+
+    if not profile.team:
+        return render(request, 'sprints.html', {'no_team': True})
+
+    team = profile.team
+    create_form = SprintForm(team=team)
+    invalid_status_sprint_id = None
+    invalid_status_form = None
+
+    if request.method == 'POST':
+        if not is_manager:
+            raise PermissionDenied
+
+        action = request.POST.get('action')
+        if action == 'create_sprint':
+            create_form = SprintForm(request.POST, team=team)
+            if create_form.is_valid():
+                sprint = create_form.save(commit=False)
+                sprint.team = team
+                sprint.save()
+                return redirect('sprint_board_page')
+        elif action == 'update_sprint_status':
+            sprint = get_object_or_404(Sprint, pk=request.POST.get('sprint_id'), team=team)
+            invalid_status_sprint_id = sprint.id
+            invalid_status_form = SprintStatusForm(request.POST, instance=sprint)
+            if invalid_status_form.is_valid():
+                invalid_status_form.save()
+                return redirect('sprint_board_page')
+        elif action == 'delete_sprint':
+            sprint = get_object_or_404(Sprint, pk=request.POST.get('sprint_id'), team=team)
+            sprint_tasks = list(_team_tasks(team).filter(sprint=sprint))
+
+            for task in sprint_tasks:
+                task.sprint = None
+                _sync_task_backlog_state(task)
+                task.save(update_fields=['sprint', 'backlog_state', 'updated_at'])
+                _log_task_note(
+                    task,
+                    request.user,
+                    f"Sprint changed from {sprint.name} to Product Backlog.",
+                )
+
+            sprint.delete()
+            return redirect('sprint_board_page')
+
+    sprints = list(_sprint_queryset(team))
+    for sprint in sprints:
+        sprint.board_tasks = list(_ordered_tasks(_team_tasks(team).filter(sprint=sprint)))
+        if is_manager:
+            if invalid_status_form is not None and sprint.id == invalid_status_sprint_id:
+                sprint.status_form = invalid_status_form
+            else:
+                sprint.status_form = SprintStatusForm(instance=sprint)
+
+    return render(
+        request,
+        'sprints.html',
+        {
+            'create_form': create_form,
+            'is_manager': is_manager,
+            'sprints': sprints,
+            'backlog_count': Task.objects.filter(team=team, sprint__isnull=True).count(),
         },
     )
 

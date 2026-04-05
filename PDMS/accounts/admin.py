@@ -1,6 +1,6 @@
 from django.contrib import admin
 from django.utils.html import format_html
-from .models import Profile, Task, TaskUpdate, Team, TeamInvite
+from .models import Profile, Sprint, Task, TaskUpdate, Team, TeamInvite
 
 @admin.register(Profile)
 class ProfileAdmin(admin.ModelAdmin):
@@ -16,11 +16,12 @@ class TaskAdmin(admin.ModelAdmin):
         'backlog_state',
         'colored_status',
         'assigned_to',
+        'sprint',
         'team',
         'updated_at',
     )
-    list_filter = ('item_type', 'priority', 'backlog_state', 'status', 'due_date', 'updated_at')
-    search_fields = ('title', 'description', 'acceptance_criteria', 'assigned_to__username', 'team__name')
+    list_filter = ('item_type', 'priority', 'backlog_state', 'status', 'sprint', 'due_date', 'updated_at')
+    search_fields = ('title', 'description', 'acceptance_criteria', 'assigned_to__username', 'team__name', 'sprint__name')
 
     def colored_status(self, obj):
         colors = {
@@ -48,6 +49,13 @@ class TaskUpdateAdmin(admin.ModelAdmin):
 class TeamAdmin(admin.ModelAdmin):
     list_display = ('name', 'created_at')
     search_fields = ('name',)
+
+
+@admin.register(Sprint)
+class SprintAdmin(admin.ModelAdmin):
+    list_display = ('name', 'team', 'status', 'start_date', 'end_date')
+    list_filter = ('status', 'start_date', 'end_date')
+    search_fields = ('name', 'team__name')
 
 
 @admin.register(TeamInvite)

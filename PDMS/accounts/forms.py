@@ -1,6 +1,6 @@
 from django import forms
 from django.contrib.auth.models import User
-from .models import Task, Team
+from .models import Sprint, Task, Team
 
 
 def _add_form_control_css(fields):
@@ -64,6 +64,12 @@ class BacklogItemForm(forms.ModelForm):
         empty_label="Unassigned",
         widget=forms.Select(attrs={"class": "form-control"}),
     )
+    sprint = forms.ModelChoiceField(
+        queryset=Sprint.objects.none(),
+        required=False,
+        empty_label="Backlog (no sprint)",
+        widget=forms.Select(attrs={"class": "form-control"}),
+    )
 
     class Meta:
         model = Task
@@ -72,6 +78,7 @@ class BacklogItemForm(forms.ModelForm):
             "item_type",
             "priority",
             "backlog_state",
+            "sprint",
             "description",
             "acceptance_criteria",
             "due_date",
@@ -93,8 +100,10 @@ class BacklogItemForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         assignable_users = kwargs.pop("assignable_users", User.objects.none())
+        available_sprints = kwargs.pop("available_sprints", Sprint.objects.none())
         super().__init__(*args, **kwargs)
         self.fields["assigned_to"].queryset = assignable_users
+        self.fields["sprint"].queryset = available_sprints
         _add_form_control_css(self.fields)
 
 
@@ -105,6 +114,12 @@ class BacklogGroomForm(forms.ModelForm):
         empty_label="Unassigned",
         widget=forms.Select(attrs={"class": "form-control"}),
     )
+    sprint = forms.ModelChoiceField(
+        queryset=Sprint.objects.none(),
+        required=False,
+        empty_label="Backlog (no sprint)",
+        widget=forms.Select(attrs={"class": "form-control"}),
+    )
 
     class Meta:
         model = Task
@@ -113,6 +128,7 @@ class BacklogGroomForm(forms.ModelForm):
             "item_type",
             "priority",
             "backlog_state",
+            "sprint",
             "description",
             "acceptance_criteria",
             "due_date",
@@ -130,9 +146,45 @@ class BacklogGroomForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         assignable_users = kwargs.pop("assignable_users", User.objects.none())
+        available_sprints = kwargs.pop("available_sprints", Sprint.objects.none())
         super().__init__(*args, **kwargs)
         self.fields["assigned_to"].queryset = assignable_users
+        self.fields["sprint"].queryset = available_sprints
         _add_form_control_css(self.fields)
+
+
+class SprintForm(forms.ModelForm):
+    def __init__(self, *args, **kwargs):
+        self.team = kwargs.pop("team", None)
+        super().__init__(*args, **kwargs)
+        _add_form_control_css(self.fields)
+
+    class Meta:
+        model = Sprint
+        fields = ["name", "start_date", "end_date", "status"]
+        widgets = {
+            "name": forms.TextInput(attrs={"class": "form-control", "placeholder": "Sprint name"}),
+            "start_date": forms.DateInput(attrs={"class": "form-control", "type": "date"}),
+            "end_date": forms.DateInput(attrs={"class": "form-control", "type": "date"}),
+            "status": forms.Select(attrs={"class": "form-control"}),
+        }
+
+    def clean_name(self):
+        name = self.cleaned_data["name"].strip()
+
+        if self.team and Sprint.objects.filter(team=self.team, name__iexact=name).exists():
+            raise forms.ValidationError("A sprint with that name already exists for this team.")
+
+        return name
+
+
+class SprintStatusForm(forms.ModelForm):
+    class Meta:
+        model = Sprint
+        fields = ["status"]
+        widgets = {
+            "status": forms.Select(attrs={"class": "form-select form-select-sm"}),
+        }
 
 class CreateTeamForm(forms.Form):
     name = forms.CharField(max_length=100)

@@ -1,6 +1,7 @@
 import uuid
 from django.db import models
 from django.contrib.auth.models import User
+from django.core.exceptions import ValidationError
 from pathlib import PurePath
 
 class Team(models.Model):
@@ -25,6 +26,33 @@ class Profile(models.Model):
 
     def __str__(self):
         return self.user.username
+
+
+class Sprint(models.Model):
+    STATUS_CHOICES = [
+        ('planned', 'Planned'),
+        ('active', 'Active'),
+        ('closed', 'Closed'),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    team = models.ForeignKey(Team, on_delete=models.CASCADE, related_name='sprints')
+    name = models.CharField(max_length=120)
+    start_date = models.DateField()
+    end_date = models.DateField()
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='planned')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ('team', 'name')
+        ordering = ['start_date', 'name']
+
+    def clean(self):
+        if self.end_date and self.start_date and self.end_date < self.start_date:
+            raise ValidationError("Sprint end date must be on or after the start date.")
+
+    def __str__(self):
+        return f"{self.team.name}: {self.name}"
 
 class Task(models.Model):
     ITEM_TYPE_CHOICES = [
@@ -86,6 +114,13 @@ class Task(models.Model):
     )
     team = models.ForeignKey(
         'Team', null=True, blank=True, on_delete=models.SET_NULL, related_name='tasks'
+    )
+    sprint = models.ForeignKey(
+        'Sprint',
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='tasks',
     )
 
     #  New field for file uploads
