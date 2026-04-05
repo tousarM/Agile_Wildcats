@@ -1,4 +1,3 @@
-
 {% extends "base.html" %}
 
 {% block title %}Board{% endblock %}
@@ -12,7 +11,42 @@
 </div>
 {% else %}
 
-<h2>{{ team.name }} — Board</h2>
+<div class="d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-3 mb-4">
+  <div>
+    <h2 class="mb-1">{{ team.name }} - Board</h2>
+    <p class="text-muted mb-0">
+      Track tickets by workflow state{% if selected_sprint %} for {{ selected_sprint.name }}{% endif %}.
+    </p>
+  </div>
+</div>
+
+{% if filter_sprints %}
+<div class="card shadow-sm mb-4">
+  <div class="card-body">
+    <form method="get" class="row g-3 align-items-end">
+      <div class="col-sm-8 col-md-6 col-lg-4">
+        <label class="form-label" for="board-sprint-filter">View by Sprint</label>
+        <select id="board-sprint-filter" name="sprint" class="form-select">
+          <option value="">All Sprints</option>
+          {% for filter_sprint in filter_sprints %}
+          <option value="{{ filter_sprint.id }}" {% if selected_sprint_id == filter_sprint.id|stringformat:"s" %}selected{% endif %}>
+            {{ filter_sprint.name }} ({{ filter_sprint.get_status_display }})
+          </option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-auto">
+        <button type="submit" class="btn btn-outline-primary">Apply Filter</button>
+      </div>
+      {% if selected_sprint_id %}
+      <div class="col-auto">
+        <a href="{% url 'boards' %}" class="btn btn-outline-secondary">Show All</a>
+      </div>
+      {% endif %}
+    </form>
+  </div>
+</div>
+{% endif %}
 
 <div style="display: flex; gap: 1rem; overflow-x: auto; align-items: flex-start; padding-bottom: 1rem;">
   {% for status_key, status_label, col_tasks in board_columns %}
@@ -23,11 +57,14 @@
     <div class="card mb-2">
       <div class="card-body py-2 px-3">
         <div class="fw-semibold">{{ task.title }}</div>
+        {% if task.sprint %}
+        <div><small class="text-muted">{{ task.sprint.name }}</small></div>
+        {% endif %}
         {% if task.due_date %}
-          <small class="text-muted">Due {{ task.due_date|date:"M d" }}</small>
+        <small class="text-muted">Due {{ task.due_date|date:"M d" }}</small>
         {% endif %}
         {% if task.assigned_to %}
-          <div><small class="text-muted">{{ task.assigned_to.username }}</small></div>
+        <div><small class="text-muted">{{ task.assigned_to.username }}</small></div>
         {% endif %}
       </div>
     </div>
