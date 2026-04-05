@@ -14,7 +14,7 @@
   <div>
     <h2 class="mb-1">Product Backlog</h2>
     <p class="text-muted mb-0">
-      Capture backlog items here, then use <a href="{% url 'task_page' %}">Tasks</a> for day-to-day execution updates.
+      Tickets stay here until they are assigned to a sprint. Manage sprint timelines on the <a href="{% url 'sprint_board_page' %}">Sprint Board</a>.
     </p>
   </div>
   {% if is_manager %}
@@ -22,6 +22,10 @@
   {% else %}
   <span class="badge text-bg-secondary p-2">View-only backlog access</span>
   {% endif %}
+</div>
+
+<div class="alert alert-light border mb-4">
+  Active sprint containers available: {{ sprint_count }}.
 </div>
 
 {% if is_manager %}
@@ -64,6 +68,11 @@
           <label class="form-label" for="{{ create_form.assigned_to.id_for_label }}">Assigned To</label>
           {{ create_form.assigned_to }}
           {{ create_form.assigned_to.errors }}
+        </div>
+        <div class="col-md-4">
+          <label class="form-label" for="{{ create_form.sprint.id_for_label }}">Sprint</label>
+          {{ create_form.sprint }}
+          {{ create_form.sprint.errors }}
         </div>
         <div class="col-12">
           <label class="form-label" for="{{ create_form.description.id_for_label }}">Description</label>
@@ -155,7 +164,7 @@
 
           {% if is_manager %}
           <hr>
-          <form method="post">
+          <form method="post" id="groom_form_{{ item.id }}">
             {% csrf_token %}
             <input type="hidden" name="action" value="update_backlog_item">
             <input type="hidden" name="task_id" value="{{ item.id }}">
@@ -193,6 +202,11 @@
                 {{ item.groom_form.assigned_to }}
                 {{ item.groom_form.assigned_to.errors }}
               </div>
+              <div class="col-md-4">
+                <label class="form-label" for="{{ item.groom_form.sprint.id_for_label }}">Sprint</label>
+                {{ item.groom_form.sprint }}
+                {{ item.groom_form.sprint.errors }}
+              </div>
               <div class="col-md-12">
                 <label class="form-label" for="{{ item.groom_form.description.id_for_label }}">Description</label>
                 {{ item.groom_form.description }}
@@ -204,8 +218,16 @@
                 {{ item.groom_form.acceptance_criteria.errors }}
               </div>
             </div>
-            <button type="submit" class="btn btn-outline-primary btn-sm mt-3">Save Backlog Changes</button>
           </form>
+          <div class="d-flex gap-2 mt-3">
+            <button type="submit" form="groom_form_{{ item.id }}" class="btn btn-outline-primary btn-sm">Save Backlog Changes</button>
+            <form method="post" onsubmit="return confirm('Delete this backlog item? This cannot be undone.');">
+              {% csrf_token %}
+              <input type="hidden" name="action" value="delete_backlog_item">
+              <input type="hidden" name="task_id" value="{{ item.id }}">
+              <button type="submit" class="btn btn-outline-danger btn-sm">Delete Backlog Item</button>
+            </form>
+          </div>
           {% endif %}
         </div>
       </div>
@@ -214,7 +236,7 @@
   </div>
   {% else %}
   <div class="alert alert-light border mb-0">
-    No backlog items are currently in {{ section.label|lower }}.
+    No unscheduled backlog items are currently in {{ section.label|lower }}.
   </div>
   {% endif %}
 </section>

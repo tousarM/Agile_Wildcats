@@ -26,6 +26,7 @@
       <span class="badge text-bg-secondary">{{ task.get_priority_display }}</span>
       {% endif %}
       <span class="badge text-bg-light">{{ task.get_backlog_state_display }}</span>
+      <span class="badge text-bg-light">Sprint: {{ task.sprint.name|default:"Backlog" }}</span>
     </div>
 
     <strong>{{ task.title }}</strong><br>

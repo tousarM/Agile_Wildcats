@@ -11,7 +11,7 @@ from django.test import TransactionTestCase
 from django.test import override_settings
 from django.urls import reverse
 
-from .models import Profile, Task, TaskUpdate, Team
+from .models import Profile, Sprint, Task, TaskUpdate, Team
 from .signals import ensure_user_profile
 
 
@@ -62,9 +62,21 @@ class TaskAndBacklogTests(TestCase):
             "item_type": "story",
             "acceptance_criteria": "",
             "assigned_to": None,
+            "sprint": None,
         }
         defaults.update(overrides)
         return Task.objects.create(**defaults)
+
+    def _create_sprint(self, **overrides):
+        defaults = {
+            "team": self.team,
+            "name": "Sprint 1",
+            "start_date": "2026-04-07",
+            "end_date": "2026-04-18",
+            "status": "planned",
+        }
+        defaults.update(overrides)
+        return Sprint.objects.create(**defaults)
 
     def test_profile_is_created_for_new_user(self):
         user = User.objects.create_user(
@@ -157,6 +169,24 @@ class TaskAndBacklogTests(TestCase):
         self.assertContains(response, "Assignment:")
         self.assertContains(response, '<del class="text-muted">dev1</del>')
         self.assertContains(response, "Unassigned.")
+
+    def test_manager_can_delete_task_item(self):
+        task = self._create_task(
+            title="Delete me from tasks",
+            assigned_to=self.developer,
+        )
+        self.client.login(username="manager1", password="pass123")
+
+        response = self.client.post(
+            reverse("task_page"),
+            {
+                "action": "delete_task",
+                "task_id": task.id,
+            },
+        )
+
+        self.assertRedirects(response, reverse("task_page"))
+        self.assertFalse(Task.objects.filter(id=task.id).exists())
 
     def test_assigned_user_can_update_progress_and_see_it_after_relogin(self):
         task = self._create_task(
@@ -380,6 +410,7 @@ class TaskAndBacklogTests(TestCase):
         self.assertNotContains(response, "Unassigned Task")
 
     def test_manager_can_create_backlog_item_with_priority_and_acceptance_criteria(self):
+        sprint = self._create_sprint(name="Sprint Alpha")
         self.client.login(username="manager1", password="pass123")
 
         response = self.client.post(
@@ -390,6 +421,7 @@ class TaskAndBacklogTests(TestCase):
                 "item_type": "story",
                 "priority": "high",
                 "backlog_state": "selected_for_sprint",
+                "sprint": sprint.id,
                 "description": "Plan the login flow and implementation work.",
                 "acceptance_criteria": "Users can sign in with a valid username and password.",
                 "due_date": "2026-04-10",
@@ -403,18 +435,23 @@ class TaskAndBacklogTests(TestCase):
         self.assertEqual(task.item_type, "story")
         self.assertEqual(task.priority, "high")
         self.assertEqual(task.backlog_state, "selected_for_sprint")
+        self.assertEqual(task.sprint, sprint)
         self.assertEqual(
             task.acceptance_criteria,
             "Users can sign in with a valid username and password.",
         )
 
-        response = self.client.get(reverse("backlog_page"))
-        self.assertContains(response, "Plan login story")
-        self.assertContains(response, "Selected for Sprint")
-        self.assertContains(response, "High")
-        self.assertContains(response, "Users can sign in with a valid username and password.")
+        backlog_response = self.client.get(reverse("backlog_page"))
+        self.assertNotContains(backlog_response, "Plan login story")
+
+        sprint_response = self.client.get(reverse("sprint_board_page"))
+        self.assertContains(sprint_response, "Plan login story")
+        self.assertContains(sprint_response, "Sprint Alpha")
+        self.assertContains(sprint_response, "High")
+        self.assertContains(sprint_response, "Users can sign in with a valid username and password.")
 
     def test_manager_can_groom_backlog_item(self):
+        sprint = self._create_sprint(name="Sprint Beta")
         task = self._create_task(
             title="Refine board experience",
             description="Initial description",
@@ -431,7 +468,8 @@ class TaskAndBacklogTests(TestCase):
                 "title": "Refine board experience",
                 "item_type": "bug",
                 "priority": "critical",
-                "backlog_state": "ready_for_test",
+                "backlog_state": "selected_for_sprint",
+                "sprint": sprint.id,
                 "description": "Initial description with clarifications",
                 "acceptance_criteria": "Board updates render correctly after saving.",
                 "due_date": "2026-04-12",
@@ -443,15 +481,178 @@ class TaskAndBacklogTests(TestCase):
         task.refresh_from_db()
         self.assertEqual(task.item_type, "bug")
         self.assertEqual(task.priority, "critical")
-        self.assertEqual(task.backlog_state, "ready_for_test")
+        self.assertEqual(task.backlog_state, "selected_for_sprint")
+        self.assertEqual(task.sprint, sprint)
         self.assertEqual(task.assigned_to, self.general_user)
         self.assertEqual(task.acceptance_criteria, "Board updates render correctly after saving.")
 
         update = TaskUpdate.objects.filter(task=task).exclude(note=TaskUpdate.SYSTEM_CREATED_NOTE).latest("created_at")
         self.assertIn("Priority changed from Medium to Critical.", update.note)
-        self.assertIn("Backlog state moved from Backlog to Ready for Test.", update.note)
+        self.assertIn("Backlog state moved from Backlog to Selected for Sprint.", update.note)
+        self.assertIn("Sprint changed from Product Backlog to Sprint Beta.", update.note)
         self.assertIn("Acceptance criteria updated.", update.note)
         self.assertEqual(update.current_assignee, "member1")
+
+    def test_manager_can_delete_backlog_item(self):
+        task = self._create_task(title="Delete me from backlog")
+        self.client.login(username="manager1", password="pass123")
+
+        response = self.client.post(
+            reverse("backlog_page"),
+            {
+                "action": "delete_backlog_item",
+                "task_id": task.id,
+            },
+        )
+
+        self.assertRedirects(response, reverse("backlog_page"))
+        self.assertFalse(Task.objects.filter(id=task.id).exists())
+
+    def test_manager_can_create_sprint(self):
+        self.client.login(username="manager1", password="pass123")
+
+        response = self.client.post(
+            reverse("sprint_board_page"),
+            {
+                "action": "create_sprint",
+                "name": "Release Sprint",
+                "start_date": "2026-04-14",
+                "end_date": "2026-04-28",
+                "status": "planned",
+            },
+        )
+
+        self.assertRedirects(response, reverse("sprint_board_page"))
+        sprint = Sprint.objects.get(name="Release Sprint")
+        self.assertEqual(sprint.team, self.team)
+        self.assertEqual(sprint.status, "planned")
+
+    def test_manager_can_update_sprint_state_from_dropdown(self):
+        sprint = self._create_sprint(name="Release Sprint")
+        self.client.login(username="manager1", password="pass123")
+
+        active_response = self.client.post(
+            reverse("sprint_board_page"),
+            {
+                "action": "update_sprint_status",
+                "sprint_id": sprint.id,
+                "status": "active",
+            },
+        )
+        self.assertRedirects(active_response, reverse("sprint_board_page"))
+        sprint.refresh_from_db()
+        self.assertEqual(sprint.status, "active")
+
+        close_response = self.client.post(
+            reverse("sprint_board_page"),
+            {
+                "action": "update_sprint_status",
+                "sprint_id": sprint.id,
+                "status": "closed",
+            },
+        )
+        self.assertRedirects(close_response, reverse("sprint_board_page"))
+        sprint.refresh_from_db()
+        self.assertEqual(sprint.status, "closed")
+
+        reopen_response = self.client.post(
+            reverse("sprint_board_page"),
+            {
+                "action": "update_sprint_status",
+                "sprint_id": sprint.id,
+                "status": "active",
+            },
+        )
+        self.assertRedirects(reopen_response, reverse("sprint_board_page"))
+        sprint.refresh_from_db()
+        self.assertEqual(sprint.status, "active")
+
+    def test_manager_can_delete_sprint_and_return_tickets_to_backlog(self):
+        sprint = self._create_sprint(name="Disposable Sprint", status="active")
+        task = self._create_task(
+            title="Return me to backlog",
+            sprint=sprint,
+            backlog_state="selected_for_sprint",
+        )
+        self.client.login(username="manager1", password="pass123")
+
+        response = self.client.post(
+            reverse("sprint_board_page"),
+            {
+                "action": "delete_sprint",
+                "sprint_id": sprint.id,
+            },
+        )
+
+        self.assertRedirects(response, reverse("sprint_board_page"))
+        self.assertFalse(Sprint.objects.filter(id=sprint.id).exists())
+
+        task.refresh_from_db()
+        self.assertIsNone(task.sprint)
+        self.assertEqual(task.backlog_state, "backlog")
+
+        backlog_response = self.client.get(reverse("backlog_page"))
+        self.assertContains(backlog_response, "Return me to backlog")
+
+        update = TaskUpdate.objects.filter(task=task).latest("created_at")
+        self.assertEqual(update.note, "Sprint changed from Disposable Sprint to Product Backlog.")
+
+    def test_assigning_backlog_ticket_to_sprint_moves_it_to_sprint_board(self):
+        sprint = self._create_sprint(name="Planning Sprint")
+        task = self._create_task(title="Move me into sprint")
+        self.client.login(username="manager1", password="pass123")
+
+        response = self.client.post(
+            reverse("backlog_page"),
+            {
+                "action": "update_backlog_item",
+                "task_id": task.id,
+                "title": task.title,
+                "item_type": task.item_type,
+                "priority": task.priority,
+                "backlog_state": task.backlog_state,
+                "sprint": sprint.id,
+                "description": task.description,
+                "acceptance_criteria": task.acceptance_criteria,
+                "due_date": "",
+                "assigned_to": "",
+            },
+        )
+
+        self.assertRedirects(response, reverse("backlog_page"))
+        task.refresh_from_db()
+        self.assertEqual(task.sprint, sprint)
+        self.assertEqual(task.backlog_state, "selected_for_sprint")
+
+        backlog_response = self.client.get(reverse("backlog_page"))
+        self.assertNotContains(backlog_response, "Move me into sprint")
+
+        sprint_response = self.client.get(reverse("sprint_board_page"))
+        self.assertContains(sprint_response, "Planning Sprint")
+        self.assertContains(sprint_response, "Move me into sprint")
+
+    def test_member_can_view_sprint_board_but_cannot_manage_sprints(self):
+        sprint = self._create_sprint(name="Visible Sprint")
+        self._create_task(title="Sprint board ticket", sprint=sprint, backlog_state="selected_for_sprint")
+
+        self.client.login(username="dev1", password="pass123")
+        response = self.client.get(reverse("sprint_board_page"))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Visible Sprint")
+        self.assertContains(response, "Sprint board ticket")
+        self.assertContains(response, "View-only sprint access")
+
+        create_response = self.client.post(
+            reverse("sprint_board_page"),
+            {
+                "action": "create_sprint",
+                "name": "Blocked Sprint",
+                "start_date": "2026-05-01",
+                "end_date": "2026-05-15",
+                "status": "planned",
+            },
+        )
+        self.assertEqual(create_response.status_code, 403)
 
     def test_member_can_view_backlog_but_cannot_groom_it(self):
         task = self._create_task(

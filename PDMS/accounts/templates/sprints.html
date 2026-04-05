@@ -1,0 +1,184 @@
+{% extends "base.html" %}
+
+{% block title %}Sprint Board{% endblock %}
+
+{% block content %}
+<style>
+  .sprint-board-grid .sprint-column {
+    width: 100%;
+  }
+  @media (min-width: 1500px) {
+    .sprint-board-grid .sprint-column {
+      width: 50%;
+    }
+  }
+</style>
+{% if no_team %}
+<div class="alert alert-warning">
+  You must be part of a team to manage sprints.
+  <a href="{% url 'create_team' %}" class="alert-link">Create a team</a> or wait for an invitation.
+</div>
+{% else %}
+
+<div class="d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-3 mb-4">
+  <div>
+    <h2 class="mb-1">Sprint Board</h2>
+    <p class="text-muted mb-0">
+      Tickets without a sprint stay in the <a href="{% url 'backlog_page' %}">Backlog</a>. The current unscheduled count is {{ backlog_count }}.
+    </p>
+  </div>
+  {% if is_manager %}
+  <span class="badge text-bg-primary p-2">Managers can create, update, and delete sprints</span>
+  {% else %}
+  <span class="badge text-bg-secondary p-2">View-only sprint access</span>
+  {% endif %}
+</div>
+
+{% if is_manager %}
+<div class="card shadow-sm mb-4">
+  <div class="card-body">
+    <h4 class="card-title">Create Sprint</h4>
+    <form method="post">
+      {% csrf_token %}
+      <input type="hidden" name="action" value="create_sprint">
+      {% if create_form.non_field_errors %}
+      <div class="alert alert-danger">{{ create_form.non_field_errors }}</div>
+      {% endif %}
+      <div class="row g-3">
+        <div class="col-md-5">
+          <label class="form-label" for="{{ create_form.name.id_for_label }}">Sprint Name</label>
+          {{ create_form.name }}
+          {{ create_form.name.errors }}
+        </div>
+        <div class="col-md-3">
+          <label class="form-label" for="{{ create_form.start_date.id_for_label }}">Start Date</label>
+          {{ create_form.start_date }}
+          {{ create_form.start_date.errors }}
+        </div>
+        <div class="col-md-3">
+          <label class="form-label" for="{{ create_form.end_date.id_for_label }}">End Date</label>
+          {{ create_form.end_date }}
+          {{ create_form.end_date.errors }}
+        </div>
+        <div class="col-md-3">
+          <label class="form-label" for="{{ create_form.status.id_for_label }}">Sprint State</label>
+          {{ create_form.status }}
+          {{ create_form.status.errors }}
+        </div>
+      </div>
+      <button type="submit" class="btn btn-primary mt-3">Create Sprint</button>
+    </form>
+  </div>
+</div>
+{% endif %}
+
+{% if sprints %}
+<div class="row g-4 sprint-board-grid">
+  {% for sprint in sprints %}
+  <div class="col-12 sprint-column">
+    <div class="card shadow-sm h-100">
+      <div class="card-body">
+        <div class="d-flex flex-column flex-lg-row justify-content-between align-items-lg-start gap-3">
+          <div>
+            <h4 class="card-title mb-1">{{ sprint.name }}</h4>
+            <p class="text-muted mb-2">
+              {{ sprint.start_date }} to {{ sprint.end_date }}
+            </p>
+            {% if sprint.status == "active" %}
+            <span class="badge text-bg-success">{{ sprint.get_status_display }}</span>
+            {% elif sprint.status == "planned" %}
+            <span class="badge text-bg-warning text-dark">{{ sprint.get_status_display }}</span>
+            {% else %}
+            <span class="badge text-bg-secondary">{{ sprint.get_status_display }}</span>
+            {% endif %}
+          </div>
+          {% if is_manager %}
+          <div class="d-flex flex-column flex-xl-row gap-2 w-100 justify-content-lg-end">
+            <form method="post" class="d-flex flex-column flex-md-row gap-2 align-items-md-end">
+              {% csrf_token %}
+              <input type="hidden" name="action" value="update_sprint_status">
+              <input type="hidden" name="sprint_id" value="{{ sprint.id }}">
+              <div class="flex-grow-1">
+                <label class="form-label small mb-1" for="{{ sprint.status_form.status.id_for_label }}">Sprint State</label>
+                {{ sprint.status_form.status }}
+                {{ sprint.status_form.status.errors }}
+              </div>
+              <button type="submit" class="btn btn-sm btn-outline-primary">Save State</button>
+            </form>
+            <form method="post" class="align-self-start" onsubmit="return confirm('Delete this sprint? Tickets in it will be moved back to the backlog.');">
+              {% csrf_token %}
+              <input type="hidden" name="action" value="delete_sprint">
+              <input type="hidden" name="sprint_id" value="{{ sprint.id }}">
+              <button type="submit" class="btn btn-sm btn-danger">Delete Sprint</button>
+            </form>
+          </div>
+          {% endif %}
+        </div>
+
+        <hr>
+
+        {% if sprint.board_tasks %}
+        <div class="d-flex flex-column gap-3">
+          {% for task in sprint.board_tasks %}
+          <div class="border rounded p-3 bg-light">
+            <div class="d-flex flex-wrap gap-2 mb-2">
+              <span class="badge text-bg-dark">{{ task.get_item_type_display }}</span>
+              {% if task.priority == "critical" %}
+              <span class="badge text-bg-danger">{{ task.get_priority_display }}</span>
+              {% elif task.priority == "high" %}
+              <span class="badge bg-warning text-dark">{{ task.get_priority_display }}</span>
+              {% elif task.priority == "medium" %}
+              <span class="badge text-bg-primary">{{ task.get_priority_display }}</span>
+              {% else %}
+              <span class="badge text-bg-secondary">{{ task.get_priority_display }}</span>
+              {% endif %}
+
+              {% if task.status == "done" %}
+              <span class="badge text-bg-success">{{ task.get_status_display }}</span>
+              {% elif task.status == "in_progress" %}
+              <span class="badge bg-warning text-dark">{{ task.get_status_display }}</span>
+              {% else %}
+              <span class="badge text-bg-secondary">{{ task.get_status_display }}</span>
+              {% endif %}
+            </div>
+
+            <strong>{{ task.title }}</strong>
+            <div class="text-muted">
+              Backlog stage: {{ task.get_backlog_state_display }}
+              {% if task.assigned_to %}
+              | Assigned to: {{ task.assigned_to.username }}
+              {% else %}
+              | Assigned to: Unassigned
+              {% endif %}
+              | Due: {{ task.due_date|default:"No due date" }}
+            </div>
+
+            {% if task.description %}
+            <div class="mt-2">{{ task.description }}</div>
+            {% endif %}
+            {% if task.acceptance_criteria %}
+            <div class="mt-2">
+              <strong>Acceptance Criteria:</strong> {{ task.acceptance_criteria|linebreaksbr }}
+            </div>
+            {% endif %}
+          </div>
+          {% endfor %}
+        </div>
+        {% else %}
+        <div class="alert alert-light border mb-0">
+          No tickets are currently assigned to this sprint.
+        </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<div class="alert alert-light border">
+  No sprints exist yet. Create one to start planning work from the backlog.
+</div>
+{% endif %}
+
+{% endif %}
+{% endblock %}
