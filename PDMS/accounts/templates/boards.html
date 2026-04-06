@@ -43,20 +43,20 @@
 </div>
 {% else %}
 
-<div class="d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-3 mb-4">
+<div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
   <div>
-    <h2 class="mb-1">{{ team.name }} - Board</h2>
+    <h2 class="mb-0">{{ team.name }} — Board</h2>
     <p class="text-muted mb-0">
       Track tickets by workflow state{% if selected_sprint %} for {{ selected_sprint.name }}{% endif %}.
     </p>
-    <select id="filter-assignee" class="form-select form-select-sm" style="width: auto;">
-      <option value="">All members</option>
-      {% for member in assignable_users %}
-        <option value="{{ member.username }}">{{ member.username }}</option>
-      {% endfor %}
-      <option value="__unassigned__">Unassigned</option>
-    </select>
   </div>
+  <select id="filter-assignee" class="form-select form-select-sm" style="width: auto;">
+    <option value="">All members</option>
+    {% for member in assignable_users %}
+      <option value="{{ member.username }}">{{ member.username }}</option>
+    {% endfor %}
+    <option value="__unassigned__">Unassigned</option>
+  </select>
 </div>
 
 {% if filter_sprints %}
@@ -194,7 +194,15 @@
           <input type="hidden" name="next" value="boards">
         </form>
         {% endif %}
-
+        {% if is_manager or task.assigned_to_id == current_user_id %}
+        <form method="post" action="{% url 'task_page' %}" class="mt-2" onsubmit="return confirm('Delete this task item? This cannot be undone.');">
+          {% csrf_token %}
+          <input type="hidden" name="action" value="delete_task">
+          <input type="hidden" name="task_id" value="{{ task.id }}">
+          <input type="hidden" name="next" value="boards">
+          <button type="submit" class="btn btn-sm btn-outline-danger">Delete Task Item</button>
+        </form>
+        {% endif %}
         <hr>
         <div>
           {% with updates=task.updates.all %}
