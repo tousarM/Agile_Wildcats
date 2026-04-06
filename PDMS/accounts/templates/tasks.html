@@ -66,42 +66,35 @@
       <a href="{{ task.attachment.url }}" download>Download Attachment</a><br>
     {% endif %}
 
-    {% if is_manager %}
-    <form method="post" class="mt-3">
+    {% if is_manager or task.assigned_to_id == current_user_id %}
+    <hr>
+    <form method="post" action="{% url 'task_page' %}" enctype="multipart/form-data">
       {% csrf_token %}
-      <input type="hidden" name="action" value="update_assignment">
+      <input type="hidden" name="action" value="update_task">
       <input type="hidden" name="task_id" value="{{ task.id }}">
+
+      {% if is_manager %}
       <label for="assigned_to_{{ task.id }}">Assignment:</label>
       <select id="assigned_to_{{ task.id }}" name="assigned_to" class="form-select mb-2">
         <option value="">Unassigned</option>
-        {% for assignable_user in assignable_users %}
-        <option value="{{ assignable_user.id }}" {% if task.assigned_to_id == assignable_user.id %}selected{% endif %}>
-          {{ assignable_user.username }}
-        </option>
+        {% for u in assignable_users %}
+        <option value="{{ u.id }}" {% if task.assigned_to_id == u.id %}selected{% endif %}>{{ u.username }}</option>
         {% endfor %}
       </select>
-      <button type="submit" class="btn btn-sm btn-outline-secondary">Save Assignment</button>
-    </form>
-    {% endif %}
+      {% endif %}
 
-    {% if is_manager or task.assigned_to_id == current_user_id %}
-    <form method="post" enctype="multipart/form-data" class="mt-3">
-      {% csrf_token %}
-      <input type="hidden" name="action" value="update_progress">
-      <input type="hidden" name="task_id" value="{{ task.id }}">
       <label for="status_{{ task.id }}">Update Status:</label>
       <select id="status_{{ task.id }}" name="status" class="form-select mb-2">
         {% for status_value, status_label in status_choices %}
-        <option value="{{ status_value }}" {% if task.status == status_value %}selected{% endif %}>
-          {{ status_label }}
-        </option>
+        <option value="{{ status_value }}" {% if task.status == status_value %}selected{% endif %}>{{ status_label }}</option>
         {% endfor %}
       </select>
       <label for="note_{{ task.id }}">Progress Note:</label>
       <textarea id="note_{{ task.id }}" name="note" class="form-control mb-2" rows="3" placeholder="Share what changed, blockers, or next steps"></textarea>
       <label for="attachment_{{ task.id }}">Progress Attachment:</label>
       <input id="attachment_{{ task.id }}" type="file" name="attachment" class="form-control mb-2">
-      <button type="submit" class="btn btn-sm btn-primary">Save Progress</button>
+      <button type="submit" class="btn btn-sm btn-primary">Save</button>
+      <input type="hidden" name="next" value="task_page">
     </form>
     {% endif %}
 
