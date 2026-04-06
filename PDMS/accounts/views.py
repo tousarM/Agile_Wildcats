@@ -15,6 +15,7 @@ from .forms import (
     TaskForm,
 )
 from .models import Profile, Sprint, Task, TaskUpdate, Team, TeamInvite
+from datetime import date, timedelta
 
 
 def _get_profile(user):
@@ -269,8 +270,8 @@ def boards(request):
 
     tasks = _team_tasks(team)
 
-    if not is_manager:
-        tasks = tasks.filter(assigned_to=request.user)
+    # if not is_manager:
+    #     tasks = tasks.filter(assigned_to=request.user)
 
     if selected_sprint is not None:
         tasks = tasks.filter(sprint=selected_sprint)
@@ -284,11 +285,18 @@ def boards(request):
         for key, label in Task.STATUS_CHOICES
     ]
 
+    assignable_users = User.objects.filter(
+        profile__team=profile.team, is_active=True
+    ).order_by('username')
+
     return render(request, 'boards.html', {
         'board_columns': board_columns,
         'status_choices': Task.STATUS_CHOICES,
         'is_manager': is_manager,
         'team': team,
+        'assignable_users': assignable_users,
+        'today': date.today(),
+        'soon': date.today() + timedelta(days=3),
         'filter_sprints': filter_sprints,
         'selected_sprint_id': selected_sprint_id,
         'selected_sprint': selected_sprint,
@@ -308,6 +316,59 @@ def task_page(request):
 
     if request.method == 'POST':
         action = request.POST.get('action')
+
+        if action == 'update_task':
+            task = get_object_or_404(Task, pk=request.POST.get('task_id'))
+
+            if is_manager:
+                assigned_to_id = request.POST.get('assigned_to')
+                previous_assignee = task.assigned_to
+                task.assigned_to = assignable_users.filter(pk=assigned_to_id).first() if assigned_to_id else None
+
+                if previous_assignee != task.assigned_to:
+                    if task.assigned_to:
+                        note = f"{TaskUpdate.SYSTEM_ASSIGNED_PREFIX}{task.assigned_to.username}."
+                    else:
+                        note = TaskUpdate.SYSTEM_UNASSIGNED_NOTE
+                    TaskUpdate.objects.create(
+                        task=task,
+                        author=request.user,
+                        status=task.status,
+                        status_changed=False,
+                        previous_status=None,
+                        previous_assignee=previous_assignee.username if previous_assignee else None,
+                        current_assignee=task.assigned_to.username if task.assigned_to else None,
+                        note=note,
+                    )
+
+            if _can_update_task(request.user, is_manager, task):
+                new_status = request.POST.get('status', task.status)
+                note = request.POST.get('note', '').strip()
+                attachment = request.FILES.get('attachment')
+                valid_statuses = {choice[0] for choice in Task.STATUS_CHOICES}
+
+                if new_status in valid_statuses:
+                    previous_status = task.status
+                    task.status = new_status
+                    task.save()
+
+                    if note or previous_status != new_status or attachment:
+                        TaskUpdate.objects.create(
+                            task=task,
+                            author=request.user,
+                            status=task.status,
+                            status_changed=previous_status != new_status,
+                            previous_status=previous_status if previous_status != new_status else None,
+                            previous_assignee=None,
+                            current_assignee=None,
+                            note=note,
+                            attachment=attachment,
+                        )
+            else:
+                task.save()
+
+            next_page = request.POST.get('next', 'task_page')
+            return redirect(next_page)
 
         if action == 'update_assignment':
             if not is_manager:
