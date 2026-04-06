@@ -61,8 +61,11 @@
       {{ status_label }} <span class="badge bg-secondary col-count">{{ col_tasks|length }}</span>
     </h6>
     {% for task in col_tasks %}
-      <div class="card mb-2 task-card {% if task.due_date %}{% if task.due_date < today %}overdue{% elif task.due_date <= soon %}due-soon{% endif %}{% endif %}"
-          data-assignee="{{ task.assigned_to.username|default:'__unassigned__' }}">
+    <div class="card mb-2 task-card {% if task.due_date %}{% if task.due_date < today %}overdue{% elif task.due_date <= soon %}due-soon{% endif %}{% endif %}"
+         data-assignee="{{ task.assigned_to.username|default:'__unassigned__' }}"
+         data-bs-toggle="modal"
+         data-bs-target="#modal-{{ task.id }}"
+         style="cursor: pointer;">
       <div class="card-body py-2 px-3">
         <div class="fw-semibold">{{ task.title }}</div>
         {% if task.due_date %}
@@ -79,6 +82,140 @@
   </div>
   {% endfor %}
 </div>
+
+<!-- Modals -->
+{% for status_key, status_label, col_tasks in board_columns %}
+{% for task in col_tasks %}
+<div class="modal fade" id="modal-{{ task.id }}" tabindex="-1" aria-labelledby="modal-label-{{ task.id }}" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content">
+
+      <div class="modal-header">
+        <div>
+          <h5 class="modal-title mb-1" id="modal-label-{{ task.id }}">{{ task.title }}</h5>
+          <div class="d-flex flex-wrap gap-2">
+            <span class="badge text-bg-dark">{{ task.get_item_type_display }}</span>
+            {% if task.priority == "critical" %}
+            <span class="badge text-bg-danger">{{ task.get_priority_display }}</span>
+            {% elif task.priority == "high" %}
+            <span class="badge bg-warning text-dark">{{ task.get_priority_display }}</span>
+            {% elif task.priority == "medium" %}
+            <span class="badge text-bg-primary">{{ task.get_priority_display }}</span>
+            {% else %}
+            <span class="badge text-bg-secondary">{{ task.get_priority_display }}</span>
+            {% endif %}
+            <span class="badge text-bg-light">Backlog Stage: {{ task.get_backlog_state_display }}</span>
+          </div>
+        </div>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+
+      <div class="modal-body">
+        <p class="mb-1"><strong>Status:</strong> {{ task.get_status_display }}</p>
+        {% if task.description %}
+          <p class="mb-1"><strong>Description:</strong> {{ task.description }}</p>
+        {% endif %}
+        {% if task.acceptance_criteria %}
+          <p class="mb-1"><strong>Acceptance Criteria:</strong><br>{{ task.acceptance_criteria|linebreaksbr }}</p>
+        {% endif %}
+        <p class="mb-1"><strong>Due:</strong> {{ task.due_date|default:"No due date" }}</p>
+        <p class="mb-1"><strong>Assigned to:</strong>
+          {% if task.assigned_to %}{{ task.assigned_to.username }}{% else %}Unassigned{% endif %}
+        </p>
+        <p class="mb-1"><strong>Last updated:</strong> {{ task.updated_at|date:"M d, Y g:i A" }}</p>
+        {% if task.attachment %}
+          <p class="mb-1"><a href="{{ task.attachment.url }}" download>Download Attachment</a></p>
+        {% endif %}
+
+        {% if is_manager or task.assigned_to_id == current_user_id %}
+        <hr>
+        <form method="post" action="{% url 'task_page' %}" enctype="multipart/form-data">
+          {% csrf_token %}
+          <input type="hidden" name="action" value="update_task">
+          <input type="hidden" name="task_id" value="{{ task.id }}">
+
+          {% if is_manager %}
+          <label for="assigned_to_{{ task.id }}">Assignment:</label>
+          <select id="assigned_to_{{ task.id }}" name="assigned_to" class="form-select mb-2">
+            <option value="">Unassigned</option>
+            {% for u in assignable_users %}
+            <option value="{{ u.id }}" {% if task.assigned_to_id == u.id %}selected{% endif %}>{{ u.username }}</option>
+            {% endfor %}
+          </select>
+          {% endif %}
+
+          <label for="status_{{ task.id }}">Update Status:</label>
+          <select id="status_{{ task.id }}" name="status" class="form-select mb-2">
+            {% for status_value, status_label in status_choices %}
+            <option value="{{ status_value }}" {% if task.status == status_value %}selected{% endif %}>{{ status_label }}</option>
+            {% endfor %}
+          </select>
+          <label for="note_{{ task.id }}">Progress Note:</label>
+          <textarea id="note_{{ task.id }}" name="note" class="form-control mb-2" rows="3" placeholder="Share what changed, blockers, or next steps"></textarea>
+          <label for="attachment_{{ task.id }}">Progress Attachment:</label>
+          <input id="attachment_{{ task.id }}" type="file" name="attachment" class="form-control mb-2">
+          <button type="submit" class="btn btn-sm btn-primary">Save</button>
+          <input type="hidden" name="next" value="boards">
+        </form>
+        {% endif %}
+
+        <hr>
+        <div>
+          {% with updates=task.updates.all %}
+            {% if updates %}
+            <strong>Discussion &amp; Activity</strong>
+            <div class="mt-2">
+              {% for update in updates %}
+              <div class="mb-3">
+                <div>{{ update.created_at|date:"M d, Y g:i A" }} - Updates by {{ update.actor_name }}</div>
+                <div class="ms-3">
+                  {% if update.has_status_line %}
+                  <div>
+                    Status:
+                    {% if update.previous_status_display %}
+                    <del class="text-muted">{{ update.previous_status_display }}</del> ->
+                    {% endif %}
+                    {{ update.get_status_display }}
+                  </div>
+                  {% endif %}
+                  {% if update.note_detail %}
+                  <div>Note: {{ update.note_detail }}</div>
+                  {% endif %}
+                  {% if update.has_attachment_line %}
+                  <div>
+                    Attachment: <a href="{{ update.attachment.url }}" download>{{ update.attachment_name }}</a>
+                  </div>
+                  {% endif %}
+                  {% if update.has_assignment_line %}
+                  <div>
+                    Assignment:
+                    {% if update.previous_assignee %}
+                    <del class="text-muted">{{ update.previous_assignee_display }}</del>
+                    {% else %}
+                    {{ update.previous_assignee_display }}
+                    {% endif %}
+                    -> {{ update.current_assignee_display }}.
+                  </div>
+                  {% endif %}
+                  {% if update.activity_detail %}
+                  <div>Activity: {{ update.activity_detail }}</div>
+                  {% endif %}
+                </div>
+              </div>
+              {% endfor %}
+            </div>
+            {% else %}
+            <span>No discussion or activity yet.</span>
+            {% endif %}
+          {% endwith %}
+        </div>
+
+      </div>
+    </div>
+  </div>
+</div>
+{% endfor %}
+{% endfor %}
 
 <script>
   document.getElementById('filter-assignee').addEventListener('change', function () {
