@@ -43,16 +43,49 @@
 </div>
 {% else %}
 
-<div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
-  <h2 class="mb-0">{{ team.name }} — Board</h2>
-  <select id="filter-assignee" class="form-select form-select-sm" style="width: auto;">
-    <option value="">All members</option>
-    {% for member in assignable_users %}
-      <option value="{{ member.username }}">{{ member.username }}</option>
-    {% endfor %}
-    <option value="__unassigned__">Unassigned</option>
-  </select>
+<div class="d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-3 mb-4">
+  <div>
+    <h2 class="mb-1">{{ team.name }} - Board</h2>
+    <p class="text-muted mb-0">
+      Track tickets by workflow state{% if selected_sprint %} for {{ selected_sprint.name }}{% endif %}.
+    </p>
+    <select id="filter-assignee" class="form-select form-select-sm" style="width: auto;">
+      <option value="">All members</option>
+      {% for member in assignable_users %}
+        <option value="{{ member.username }}">{{ member.username }}</option>
+      {% endfor %}
+      <option value="__unassigned__">Unassigned</option>
+    </select>
+  </div>
 </div>
+
+{% if filter_sprints %}
+<div class="card shadow-sm mb-4">
+  <div class="card-body">
+    <form method="get" class="row g-3 align-items-end">
+      <div class="col-sm-8 col-md-6 col-lg-4">
+        <label class="form-label" for="board-sprint-filter">View by Sprint</label>
+        <select id="board-sprint-filter" name="sprint" class="form-select">
+          <option value="">All Sprints</option>
+          {% for filter_sprint in filter_sprints %}
+          <option value="{{ filter_sprint.id }}" {% if selected_sprint_id == filter_sprint.id|stringformat:"s" %}selected{% endif %}>
+            {{ filter_sprint.name }} ({{ filter_sprint.get_status_display }})
+          </option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-auto">
+        <button type="submit" class="btn btn-outline-primary">Apply Filter</button>
+      </div>
+      {% if selected_sprint_id %}
+      <div class="col-auto">
+        <a href="{% url 'boards' %}" class="btn btn-outline-secondary">Show All</a>
+      </div>
+      {% endif %}
+    </form>
+  </div>
+</div>
+{% endif %}
 
 <div class="board-wrap">
   {% for status_key, status_label, col_tasks in board_columns %}
@@ -68,11 +101,14 @@
          style="cursor: pointer;">
       <div class="card-body py-2 px-3">
         <div class="fw-semibold">{{ task.title }}</div>
+        {% if task.sprint %}
+        <div><small class="text-muted">{{ task.sprint.name }}</small></div>
+        {% endif %}
         {% if task.due_date %}
-          <small class="text-muted">Due {{ task.due_date|date:"M d" }}</small>
+        <small class="text-muted">Due {{ task.due_date|date:"M d" }}</small>
         {% endif %}
         {% if task.assigned_to %}
-          <div><small class="text-muted">{{ task.assigned_to.username }}</small></div>
+        <div><small class="text-muted">{{ task.assigned_to.username }}</small></div>
         {% endif %}
       </div>
     </div>

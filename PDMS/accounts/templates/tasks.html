@@ -43,6 +43,7 @@
       <span class="badge text-bg-secondary">{{ task.get_priority_display }}</span>
       {% endif %}
       <span class="badge text-bg-light">Backlog Stage: {{ task.get_backlog_state_display }}</span>
+      <span class="badge text-bg-light">Sprint: {{ task.sprint.name|default:"Backlog" }}</span>
     </div>
 
     <strong>{{ task.title }}</strong><br>
@@ -97,7 +98,15 @@
       <input type="hidden" name="next" value="task_page">
     </form>
     {% endif %}
-
+    {% if is_manager %}
+    <form method="post" class="mt-2" onsubmit="return confirm('Delete this task item? This cannot be undone.');">
+      {% csrf_token %}
+      <input type="hidden" name="action" value="delete_task">
+      <input type="hidden" name="task_id" value="{{ task.id }}">
+      <button type="submit" class="btn btn-sm btn-outline-danger">Delete Task Item</button>
+    </form>
+    {% endif %}
+    
     <div class="mt-3">
       {% with updates=task.updates.all %}
         {% if updates %}

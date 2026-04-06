@@ -9,6 +9,7 @@ urlpatterns = [
     path("welcome/", views.welcome, name="welcome"),
     path("forgot-password/", views.forgot_password, name="forgot_password"),
     path("backlog/", views.backlog_page, name="backlog_page"),
+    path("sprints/", views.sprint_board_page, name="sprint_board_page"),
     path('boards/', views.boards, name='boards'),
     path("tasks/", views.task_page, name="task_page"),   # <-- NEW added module
     path("dashboard/", views.profile_dashboard, name="profile_dashboard"), # <-- NEW added module
