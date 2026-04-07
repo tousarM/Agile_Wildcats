@@ -19,49 +19,62 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v3
 
-      # Set up Python
+      # Set up Python 
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
-          python-version: "3.14"
+          python-version: "3.14.2"
 
       # Install dependencies
       - name: Install dependencies
         run: |
           pip install --upgrade pip
-          pip install -r PDMS/requirements.txt
+          pip install -r requirements.txt
 
       # Run migrations
       - name: Run migrations
         env:
-          SECRET_KEY: ${{ secrets.PDMS_secret_key }}
-        run: python PDMS/manage.py migrate --noinput
+          SECRET_KEY: ${{ secrets.PDMS_SECRET_KEY }}
+        run: python manage.py migrate --noinput
 
       # Run tests
       - name: Run tests
         env:
-          SECRET_KEY: ${{ secrets.PDMS_secret_key }}
-        run: python PDMS/manage.py test
+          SECRET_KEY: ${{ secrets.PDMS_SECRET_KEY }}
+        run: python manage.py test
+
+      # SonarQube Scan
+      - name: SonarQube Scan
+        uses: sonarsource/sonarqube-scan-action@v2
+        with:
+          args: >
+            -Dsonar.projectKey=pdms
+            -Dsonar.projectName=PDMS-Agile-Wildcats
+            -Dsonar.sources=PDMS/accounts
+            -Dsonar.python.version=3.14.2
+            -Dsonar.host.url=${{ secrets.SONAR_HOST_URL }}
+            -Dsonar.login=${{ secrets.SONAR_TOKEN }}
+
+      # SonarQube Quality Gate
+      - name: SonarQube Quality Gate
+        uses: sonarsource/sonarqube-quality-gate-action@v1
+        with:
+          sonar_token: ${{ secrets.SONAR_TOKEN }}
 
       # Build Docker image
       - name: Build Docker image
         run: |
           if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
             VERSION=${GITHUB_REF#refs/tags/}
-            docker build -t agilewildcats/pdms:$VERSION -f PDMS/Dockerfile PDMS
+            docker build -t agilewildcats/pdms:$VERSION -f Dockerfile .
           else
             BRANCH=$(echo ${GITHUB_REF#refs/heads/} | tr '/' '-')
-            docker build -t agilewildcats/pdms:$BRANCH -f PDMS/Dockerfile PDMS
+            docker build -t agilewildcats/pdms:$BRANCH -f Dockerfile .
           fi
-
-      # Sanity check Docker username
-      - name: Sanity check Docker username
-        run: echo "Using Docker username: ${{ secrets.DOCKER_USERNAME }}"
 
       # Push Docker image
       - name: Push Docker image
         run: |
-          # Secure login using GitHub secrets
           echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
           
           if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
@@ -69,8 +82,6 @@ jobs:
             docker push agilewildcats/pdms:$VERSION
             docker tag agilewildcats/pdms:$VERSION agilewildcats/pdms:latest
             docker push agilewildcats/pdms:latest
-
-            # Commit SHA tag from version
             docker tag agilewildcats/pdms:$VERSION agilewildcats/pdms:${{ github.sha }}
             docker push agilewildcats/pdms:${{ github.sha }}
           else
@@ -78,8 +89,6 @@ jobs:
             docker push agilewildcats/pdms:$BRANCH
             docker tag agilewildcats/pdms:$BRANCH agilewildcats/pdms:latest
             docker push agilewildcats/pdms:latest
-
-            # Commit SHA tag from branch
             docker tag agilewildcats/pdms:$BRANCH agilewildcats/pdms:${{ github.sha }}
             docker push agilewildcats/pdms:${{ github.sha }}
           fi
