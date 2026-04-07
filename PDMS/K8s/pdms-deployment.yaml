@@ -5,8 +5,8 @@ metadata:
   labels:
     app: pdms
 spec:
-  replicas: 2
-  revisionHistoryLimit: 3   # Keep rollout history for rollback
+  replicas: 1   # This is 1 for SQLite
+  revisionHistoryLimit: 3
   strategy:
     type: RollingUpdate
     rollingUpdate:
@@ -22,7 +22,7 @@ spec:
     spec:
       containers:
         - name: pdms
-          image: agilewildcats/pdms:latest   # Use version/commit SHA in production
+          image: agilewildcats/pdms:latest
           ports:
             - containerPort: 8000
           envFrom:
@@ -35,6 +35,10 @@ spec:
             limits:
               cpu: "500m"
               memory: "1Gi"
+          volumeMounts:
+            - name: sqlite-storage
+              mountPath: /app/db.sqlite3
+              subPath: db.sqlite3
           livenessProbe:
             httpGet:
               path: /
@@ -52,3 +56,7 @@ spec:
             timeoutSeconds: 3
             failureThreshold: 3
       restartPolicy: Always
+      volumes:
+        - name: sqlite-storage
+          persistentVolumeClaim:
+            claimName: pdms-sqlite-pvc
