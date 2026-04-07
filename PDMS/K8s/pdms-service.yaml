@@ -11,5 +11,5 @@ spec:
     - protocol: TCP
       port: 80        # External port exposed by the service
       targetPort: 8000 # Django container port
-  type: LoadBalancer   # Exposes service externally (use ClusterIP for internal-only)
+  type: ClusterIP     # Use ClusterIP for internal routing; Ingress will expose externally
   sessionAffinity: None
