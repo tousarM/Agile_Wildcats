@@ -8,10 +8,12 @@ metadata:
     nginx.ingress.kubernetes.io/rewrite-target: /
     nginx.ingress.kubernetes.io/ssl-redirect: "true"   # Force HTTPS
     nginx.ingress.kubernetes.io/proxy-body-size: "10m" # Allow larger uploads if needed
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "600" # Long-running requests
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "600"
 spec:
   ingressClassName: nginx
   rules:
-    - host: pdms.local
+    - host: pdms.local   # Can be replace with our  registered domain or external hostname if we have it howver, we keep it like this for now
       http:
         paths:
           - path: /
