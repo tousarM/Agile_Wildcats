@@ -29,19 +29,26 @@ jobs:
       - name: Install dependencies
         run: |
           pip install --upgrade pip
-          pip install -r PDMS/requirements.txt
+          pip install -r PDMS/requirements.txt   # correct path
 
       # Run migrations
       - name: Run migrations
+        working-directory: PDMS                  # run inside PDMS folder
         env:
           SECRET_KEY: ${{ secrets.PDMS_SECRET_KEY }}
         run: python manage.py migrate --noinput
 
       # Run tests
       - name: Run tests
+        working-directory: PDMS                  #  run inside PDMS folder
         env:
           SECRET_KEY: ${{ secrets.PDMS_SECRET_KEY }}
         run: python manage.py test
+
+      # Collect static files (optional but recommended)
+      - name: Collect static files
+        working-directory: PDMS
+        run: python manage.py collectstatic --noinput
 
       # SonarQube Scan
       - name: SonarQube Scan
@@ -66,10 +73,10 @@ jobs:
         run: |
           if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
             VERSION=${GITHUB_REF#refs/tags/}
-            docker build -t agilewildcats/pdms:$VERSION -f Dockerfile .
+            docker build -t agilewildcats/pdms:$VERSION -f PDMS/dockerfile PDMS
           else
             BRANCH=$(echo ${GITHUB_REF#refs/heads/} | tr '/' '-')
-            docker build -t agilewildcats/pdms:$BRANCH -f Dockerfile .
+            docker build -t agilewildcats/pdms:$BRANCH -f PDMS/dockerfile PDMS
           fi
 
       # Push Docker image
