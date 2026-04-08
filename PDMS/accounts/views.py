@@ -1,3 +1,4 @@
+from urllib import request
 from django.shortcuts import get_object_or_404, render, redirect
 from django.contrib.auth.models import User
 from django.contrib.auth import authenticate, login, logout
@@ -311,96 +312,100 @@ def task_page(request):
         return render(request, 'tasks.html', {'no_team': True})
 
     team = profile.team
-
     assignable_users = _assignable_users_for_team(team)
 
     if request.method == 'POST':
         action = request.POST.get('action')
 
-        if action == 'update_task':
+        # Create new task
+        if action == 'create_task':
+            form = TaskForm(
+                request.POST,
+                request.FILES,
+                can_assign=is_manager,
+                assignable_users=assignable_users,
+            )
+            if form.is_valid():
+                task = form.save(commit=False)
+                task.team = team
+                if not is_manager:
+                    task.assigned_to = request.user
+                task.save()
+                _log_task_created(task, request.user)
+                return redirect('task_page')
+
+        #  Manager assignment / unassignment
+        if action == 'update_assignment':
+            if not is_manager:
+                raise PermissionDenied
             task = get_object_or_404(Task, pk=request.POST.get('task_id'))
+            previous_assignee = task.assigned_to
+            assigned_to_id = request.POST.get('assigned_to')
+            task.assigned_to = assignable_users.filter(pk=assigned_to_id).first() if assigned_to_id else None
+            task.save()
 
-            if is_manager:
-                assigned_to_id = request.POST.get('assigned_to')
-                previous_assignee = task.assigned_to
-                task.assigned_to = assignable_users.filter(pk=assigned_to_id).first() if assigned_to_id else None
+            note = (
+                f"{TaskUpdate.SYSTEM_ASSIGNED_PREFIX}{task.assigned_to.username}."
+                if task.assigned_to else TaskUpdate.SYSTEM_UNASSIGNED_NOTE
+            )
+            TaskUpdate.objects.create(
+                task=task,
+                author=request.user,
+                status=task.status,
+                status_changed=False,
+                previous_status=None,
+                previous_assignee=previous_assignee.username if previous_assignee else None,
+                current_assignee=task.assigned_to.username if task.assigned_to else None,
+                note=note,
+            )
+            return redirect('task_page')
 
-                if previous_assignee != task.assigned_to:
-                    if task.assigned_to:
-                        note = f"{TaskUpdate.SYSTEM_ASSIGNED_PREFIX}{task.assigned_to.username}."
-                    else:
-                        note = TaskUpdate.SYSTEM_UNASSIGNED_NOTE
-                    TaskUpdate.objects.create(
-                        task=task,
-                        author=request.user,
-                        status=task.status,
-                        status_changed=False,
-                        previous_status=None,
-                        previous_assignee=previous_assignee.username if previous_assignee else None,
-                        current_assignee=task.assigned_to.username if task.assigned_to else None,
-                        note=note,
-                    )
+        # Progress updates
+        if action == 'update_progress':
+            task = get_object_or_404(Task, pk=request.POST.get('task_id'))
+            if not _can_update_task(request.user, is_manager, task):
+                raise PermissionDenied
 
-            if _can_update_task(request.user, is_manager, task):
-                new_status = request.POST.get('status', task.status)
-                note = request.POST.get('note', '').strip()
-                attachment = request.FILES.get('attachment')
-                valid_statuses = {choice[0] for choice in Task.STATUS_CHOICES}
+            new_status = request.POST.get('status', task.status)
+            note = request.POST.get('note', '').strip()
+            attachment = request.FILES.get('attachment')
+            valid_statuses = {choice[0] for choice in Task.STATUS_CHOICES}
 
-                if new_status in valid_statuses:
-                    previous_status = task.status
-                    task.status = new_status
-                    task.save()
-
-                    if note or previous_status != new_status or attachment:
-                        TaskUpdate.objects.create(
-                            task=task,
-                            author=request.user,
-                            status=task.status,
-                            status_changed=previous_status != new_status,
-                            previous_status=previous_status if previous_status != new_status else None,
-                            previous_assignee=None,
-                            current_assignee=None,
-                            note=note,
-                            attachment=attachment,
-                        )
-            else:
+            if new_status in valid_statuses:
+                previous_status = task.status
+                task.status = new_status
                 task.save()
 
-            next_page = request.POST.get('next', 'task_page')
-            return redirect(next_page)
+                TaskUpdate.objects.create(
+                    task=task,
+                    author=request.user,
+                    status=task.status,
+                    status_changed=previous_status != new_status,
+                    previous_status=previous_status if previous_status != new_status else None,
+                    previous_assignee=None,
+                    current_assignee=None,
+                    note=note,
+                    attachment=attachment,
+                )
+            return redirect('task_page')
 
+        # Delete task
         if action == 'delete_task':
             if not is_manager:
                 raise PermissionDenied
-
             task = get_object_or_404(Task, pk=request.POST.get('task_id'), team=team)
             task.delete()
-            next_page = request.POST.get('next', 'task_page')
-            return redirect(next_page)
-
-        form = TaskForm(
-            request.POST,
-            request.FILES,
-            can_assign=is_manager,
-            assignable_users=assignable_users,
-        )
-        if form.is_valid():
-            task = form.save(commit=False)
-            task.team = team
-            if not is_manager:
-                task.assigned_to = request.user
-            task.save()
-
-            _log_task_created(task, request.user)
             return redirect('task_page')
+
     else:
         form = TaskForm(can_assign=is_manager, assignable_users=assignable_users)
 
+    #  Build the queryset of tasks
     tasks = _team_tasks(team)
     if not is_manager:
         tasks = tasks.filter(assigned_to=request.user)
 
+    # Finally render the page
     return render(request, 'tasks.html', {
         'form': form,
         'tasks': tasks.order_by('due_date', 'title'),
@@ -409,6 +414,7 @@ def task_page(request):
         'status_choices': Task.STATUS_CHOICES,
         'current_user_id': request.user.id,
     })
+
 
 
 @login_required(login_url='login')
