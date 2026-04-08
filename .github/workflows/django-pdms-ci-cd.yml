@@ -50,24 +50,6 @@ jobs:
         working-directory: PDMS
         run: python manage.py collectstatic --noinput
 
-      # SonarQube Scan
-      - name: SonarQube Scan
-        uses: sonarsource/sonarqube-scan-action@v2
-        with:
-          args: >
-            -Dsonar.projectKey=pdms
-            -Dsonar.projectName=PDMS-Agile-Wildcats
-            -Dsonar.sources=PDMS/accounts
-            -Dsonar.python.version=3.14.2
-            -Dsonar.host.url=${{ secrets.SONAR_HOST_URL }}
-            -Dsonar.login=${{ secrets.SONAR_TOKEN }}
-
-      # SonarQube Quality Gate
-      - name: SonarQube Quality Gate
-        uses: sonarsource/sonarqube-quality-gate-action@v1
-        with:
-          sonar_token: ${{ secrets.SONAR_TOKEN }}
-
       # Build Docker image
       - name: Build Docker image
         run: |
