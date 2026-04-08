@@ -12,6 +12,7 @@ https://docs.djangoproject.com/en/6.0/ref/settings/
 
 from pathlib import Path
 import environ
+import os
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -99,9 +100,14 @@ USE_I18N = True
 USE_TZ = True
 
 # Static files (CSS, JavaScript, Images)
-STATIC_URL = "static/"
+STATIC_URL = "/static/"
+
+# Where collectstatic will put all static files for production
+STATIC_ROOT = BASE_DIR / "staticfiles"
+
+# Optional: your custom static folder for development
 STATICFILES_DIRS = [
-    BASE_DIR / "static",  # optional: your custom static folder
+    BASE_DIR / "static",
 ]
 
 # Media files (user uploads)
