@@ -29,58 +29,50 @@ jobs:
       - name: Install dependencies
         run: |
           pip install --upgrade pip
-          pip install -r PDMS/requirements.txt   # correct path
+          pip install -r PDMS/requirements.txt
 
       # Run migrations
       - name: Run migrations
-        working-directory: PDMS                  # run inside PDMS folder
+        working-directory: PDMS
         env:
           SECRET_KEY: ${{ secrets.PDMS_SECRET_KEY }}
         run: python manage.py migrate --noinput
 
       # Run tests
       - name: Run tests
-        working-directory: PDMS                  #  run inside PDMS folder
+        working-directory: PDMS
         env:
           SECRET_KEY: ${{ secrets.PDMS_SECRET_KEY }}
         run: python manage.py test
 
-      # Collect static files (optional but recommended)
+      # Collect static files
       - name: Collect static files
         working-directory: PDMS
         run: python manage.py collectstatic --noinput
 
-      # Build Docker image
+      # Log in to Docker Hub
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      # Build Docker image with dynamic version
       - name: Build Docker image
         run: |
           if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
             VERSION=${GITHUB_REF#refs/tags/}
-            docker build -t agilewildcats/pdms:$VERSION -f PDMS/dockerfile PDMS
           else
-            BRANCH=$(echo ${GITHUB_REF#refs/heads/} | tr '/' '-')
-            docker build -t agilewildcats/pdms:$BRANCH -f PDMS/dockerfile PDMS
+            VERSION=$(echo ${GITHUB_REF#refs/heads/} | tr '/' '-')-${GITHUB_SHA::7}
           fi
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          docker build -t agilewildcats/pdms:$VERSION -t agilewildcats/pdms:latest -f PDMS/dockerfile PDMS
 
       # Push Docker image
       - name: Push Docker image
         run: |
-          echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
-          
-          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
-            VERSION=${GITHUB_REF#refs/tags/}
-            docker push agilewildcats/pdms:$VERSION
-            docker tag agilewildcats/pdms:$VERSION agilewildcats/pdms:latest
-            docker push agilewildcats/pdms:latest
-            docker tag agilewildcats/pdms:$VERSION agilewildcats/pdms:${{ github.sha }}
-            docker push agilewildcats/pdms:${{ github.sha }}
-          else
-            BRANCH=$(echo ${GITHUB_REF#refs/heads/} | tr '/' '-')
-            docker push agilewildcats/pdms:$BRANCH
-            docker tag agilewildcats/pdms:$BRANCH agilewildcats/pdms:latest
-            docker push agilewildcats/pdms:latest
-            docker tag agilewildcats/pdms:$BRANCH agilewildcats/pdms:${{ github.sha }}
-            docker push agilewildcats/pdms:${{ github.sha }}
-          fi
+          docker push agilewildcats/pdms:$VERSION
+          docker push agilewildcats/pdms:latest
 
       # Deploy to Kubernetes (only on release/tag)
       - name: Deploy to Kubernetes
