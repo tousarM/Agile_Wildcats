@@ -41,6 +41,20 @@ jobs:
           pip install --upgrade pip
           pip install -r PDMS/requirements.txt
 
+      # Initialize CodeQL
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v4
+        with:
+          languages: python, actions
+          build-mode: none
+          queries: +security-extended,security-and-quality
+
+      # Perform CodeQL Analysis
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v4
+        with:
+          category: "/language:python"
+
       # Run migrations
       - name: Run migrations
         working-directory: PDMS
@@ -92,17 +106,3 @@ jobs:
           echo "${{ secrets.KUBE_CONFIG }}" > $HOME/.kube/config
           kubectl set image deployment/pdms-deployment pdms=agilewildcats/pdms:$VERSION
           kubectl rollout status deployment/pdms-deployment --timeout=120s
-
-      # Initialize CodeQL
-      - name: Initialize CodeQL
-        uses: github/codeql-action/init@v4
-        with:
-          languages: python, actions
-          build-mode: none
-          queries: +security-extended,security-and-quality
-
-      # Perform CodeQL Analysis
-      - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@v4
-        with:
-          category: "/language:python"
