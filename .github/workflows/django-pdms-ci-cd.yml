@@ -1,5 +1,8 @@
 name: Django PDMS CI/CD   # Unified workflow name
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true   # Opt in to Node.js 24 now
+
 on:
   push:
     branches: [ "main" ]       # Run CI/CD on pushes to main
@@ -17,7 +20,7 @@ jobs:
     steps:
       # Checkout code
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4   # updated to v4, Node.js 24 compatible
 
       # Set up Python 
       - name: Set up Python
