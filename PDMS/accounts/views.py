@@ -108,8 +108,9 @@ def _sync_task_backlog_state(task):
 
 
 def _redirect_to_sprint_board(request, selected_sprint_id=""):
-    if selected_sprint_id:
-        return redirect(f"{request.path}?sprint={selected_sprint_id}")
+    safe_sprint_id = str(selected_sprint_id).strip()
+    if safe_sprint_id.isdigit():
+        return redirect(f"?sprint={safe_sprint_id}")
     return redirect('sprint_board_page')
 
 
