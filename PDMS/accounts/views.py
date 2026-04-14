@@ -1,5 +1,7 @@
 from urllib import request
+from urllib.parse import urlencode
 from django.shortcuts import get_object_or_404, render, redirect
+from django.urls import reverse
 from django.contrib.auth.models import User
 from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.decorators import login_required
@@ -109,8 +111,10 @@ def _sync_task_backlog_state(task):
 
 def _redirect_to_sprint_board(request, selected_sprint_id=""):
     safe_sprint_id = str(selected_sprint_id).strip()
+    base_url = reverse('sprint_board_page')
     if safe_sprint_id.isdigit():
-        return redirect(f"?sprint={safe_sprint_id}")
+        query = urlencode({'sprint': safe_sprint_id})
+        return redirect(f"{base_url}?{query}")
     return redirect('sprint_board_page')
 
 
