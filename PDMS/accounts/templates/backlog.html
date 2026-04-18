@@ -130,6 +130,9 @@
                 {% else %}
                 <span class="badge text-bg-secondary">Execution: {{ item.get_status_display }}</span>
                 {% endif %}
+                {% if item.deadline_state %}
+                <span class="badge {{ item.deadline_badge_class }}">{{ item.deadline_label }}</span>
+                {% endif %}
               </div>
 
               <h5 class="card-title mb-1">{{ item.title }}</h5>

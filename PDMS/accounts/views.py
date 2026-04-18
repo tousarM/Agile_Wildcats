@@ -494,7 +494,7 @@ def backlog_page(request):
                         previous_assignee=original_values["assigned_to_username"] if assignee_changed else None,
                         current_assignee=task.assigned_to.username if assignee_changed and task.assigned_to else None,
                         note=note,
-                )
+                    )
 
                 return redirect('backlog_page')
         elif action == 'delete_backlog_item':

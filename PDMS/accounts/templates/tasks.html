@@ -44,6 +44,9 @@
       {% endif %}
       <span class="badge text-bg-light">Backlog Stage: {{ task.get_backlog_state_display }}</span>
       <span class="badge text-bg-light">Sprint: {{ task.sprint.name|default:"Backlog" }}</span>
+      {% if task.deadline_state %}
+      <span class="badge {{ task.deadline_badge_class }}">{{ task.deadline_label }}</span>
+      {% endif %}
     </div>
 
     <strong>{{ task.title }}</strong><br>

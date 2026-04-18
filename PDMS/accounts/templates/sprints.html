@@ -171,6 +171,9 @@
               {% else %}
               <span class="badge text-bg-secondary">{{ task.get_status_display }}</span>
               {% endif %}
+              {% if task.deadline_state %}
+              <span class="badge {{ task.deadline_badge_class }}">{{ task.deadline_label }}</span>
+              {% endif %}
             </div>
 
             <strong>{{ task.title }}</strong>
