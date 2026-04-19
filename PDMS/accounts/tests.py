@@ -172,6 +172,38 @@ class TaskAndBacklogTests(TestCase):
         self.assertContains(response, '<del class="text-muted">dev1</del>')
         self.assertContains(response, "Unassigned.")
 
+    def test_manager_can_update_task_from_combined_task_form(self):
+        task = self._create_task(
+            title="Advance sprint work",
+            description="Move this forward from the task page",
+            assigned_to=self.developer,
+        )
+        self.client.login(username="manager1", password="pass123")
+
+        response = self.client.post(
+            reverse("task_page"),
+            {
+                "action": "update_task",
+                "task_id": task.id,
+                "assigned_to": self.general_user.id,
+                "status": "in_progress",
+                "note": "Picked up and started implementation.",
+                "next": "task_page",
+            },
+        )
+
+        self.assertRedirects(response, reverse("task_page"))
+        task.refresh_from_db()
+        self.assertEqual(task.assigned_to, self.general_user)
+        self.assertEqual(task.status, "in_progress")
+
+        update = TaskUpdate.objects.filter(task=task).latest("created_at")
+        self.assertTrue(update.status_changed)
+        self.assertEqual(update.previous_status, "todo")
+        self.assertEqual(update.previous_assignee, "dev1")
+        self.assertEqual(update.current_assignee, "member1")
+        self.assertEqual(update.note, "Picked up and started implementation.")
+
     def test_manager_can_delete_task_item(self):
         task = self._create_task(
             title="Delete me from tasks",
