@@ -7,6 +7,7 @@ from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied
 from django.db.models import Case, IntegerField, Value, When
+from django.utils.http import url_has_allowed_host_and_scheme
 from .forms import (
     BacklogGroomForm,
     BacklogItemForm,
@@ -112,9 +113,25 @@ def _sync_task_backlog_state(task):
 def _redirect_to_sprint_board(request, selected_sprint_id=""):
     safe_sprint_id = str(selected_sprint_id).strip()
     base_url = reverse('sprint_board_page')
+    allowed_hosts = {request.get_host()}
+
     if safe_sprint_id.isdigit():
         query = urlencode({'sprint': safe_sprint_id})
-        return redirect(f"{base_url}?{query}")
+        target_url = f"{base_url}?{query}"
+        if url_has_allowed_host_and_scheme(
+            target_url,
+            allowed_hosts=allowed_hosts,
+            require_https=request.is_secure(),
+        ):
+            return redirect(target_url)
+        return redirect('sprint_board_page')
+
+    if url_has_allowed_host_and_scheme(
+        base_url,
+        allowed_hosts=allowed_hosts,
+        require_https=request.is_secure(),
+    ):
+        return redirect(base_url)
     return redirect('sprint_board_page')
 
 
