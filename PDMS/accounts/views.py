@@ -114,6 +114,13 @@ def _redirect_to_sprint_board(request, selected_sprint_id=""):
     return redirect('sprint_board_page')
 
 
+def _redirect_after_task_action(request, default_view="task_page"):
+    next_view = request.POST.get("next", "").strip()
+    if next_view in {"task_page", "boards"}:
+        return redirect(next_view)
+    return redirect(default_view)
+
+
 def _log_task_created(task, author):
     TaskUpdate.objects.create(
         task=task,
@@ -297,6 +304,7 @@ def boards(request):
         'is_manager': is_manager,
         'team': team,
         'assignable_users': assignable_users,
+        'current_user_id': request.user.id,
         'today': date.today(),
         'soon': date.today() + timedelta(days=3),
         'filter_sprints': filter_sprints,
@@ -314,6 +322,7 @@ def task_page(request):
 
     team = profile.team
     assignable_users = _assignable_users_for_team(team)
+    form = TaskForm(can_assign=is_manager, assignable_users=assignable_users)
 
     if request.method == 'POST':
         action = request.POST.get('action')
@@ -333,13 +342,53 @@ def task_page(request):
                     task.assigned_to = request.user
                 task.save()
                 _log_task_created(task, request.user)
-                return redirect('task_page')
+                return _redirect_after_task_action(request)
+
+        if action == 'update_task':
+            task = get_object_or_404(Task, pk=request.POST.get('task_id'), team=team)
+            if not _can_update_task(request.user, is_manager, task):
+                raise PermissionDenied
+
+            previous_assignee = task.assigned_to
+            previous_status = task.status
+            note = request.POST.get('note', '').strip()
+            attachment = request.FILES.get('attachment')
+            valid_statuses = {choice[0] for choice in Task.STATUS_CHOICES}
+            new_status = request.POST.get('status', task.status)
+
+            if new_status not in valid_statuses:
+                raise PermissionDenied
+
+            if is_manager:
+                assigned_to_id = request.POST.get('assigned_to')
+                task.assigned_to = assignable_users.filter(pk=assigned_to_id).first() if assigned_to_id else None
+
+            task.status = new_status
+            task.save()
+
+            assignee_changed = previous_assignee != task.assigned_to
+            status_changed = previous_status != task.status
+
+            if assignee_changed or status_changed or note or attachment:
+                TaskUpdate.objects.create(
+                    task=task,
+                    author=request.user,
+                    status=task.status,
+                    status_changed=status_changed,
+                    previous_status=previous_status if status_changed else None,
+                    previous_assignee=previous_assignee.username if assignee_changed and previous_assignee else None,
+                    current_assignee=task.assigned_to.username if assignee_changed and task.assigned_to else None,
+                    note=note,
+                    attachment=attachment,
+                )
+
+            return _redirect_after_task_action(request)
 
         #  Manager assignment / unassignment
         if action == 'update_assignment':
             if not is_manager:
                 raise PermissionDenied
-            task = get_object_or_404(Task, pk=request.POST.get('task_id'))
+            task = get_object_or_404(Task, pk=request.POST.get('task_id'), team=team)
             previous_assignee = task.assigned_to
             assigned_to_id = request.POST.get('assigned_to')
             task.assigned_to = assignable_users.filter(pk=assigned_to_id).first() if assigned_to_id else None
@@ -359,11 +408,11 @@ def task_page(request):
                 current_assignee=task.assigned_to.username if task.assigned_to else None,
                 note=note,
             )
-            return redirect('task_page')
+            return _redirect_after_task_action(request)
 
         # Progress updates
         if action == 'update_progress':
-            task = get_object_or_404(Task, pk=request.POST.get('task_id'))
+            task = get_object_or_404(Task, pk=request.POST.get('task_id'), team=team)
             if not _can_update_task(request.user, is_manager, task):
                 raise PermissionDenied
 
@@ -388,7 +437,7 @@ def task_page(request):
                     note=note,
                     attachment=attachment,
                 )
-            return redirect('task_page')
+            return _redirect_after_task_action(request)
 
         # Delete task
         if action == 'delete_task':
@@ -396,10 +445,7 @@ def task_page(request):
                 raise PermissionDenied
             task = get_object_or_404(Task, pk=request.POST.get('task_id'), team=team)
             task.delete()
-            return redirect('task_page')
-
-    else:
-        form = TaskForm(can_assign=is_manager, assignable_users=assignable_users)
+            return _redirect_after_task_action(request)
 
     #  Build the queryset of tasks
     tasks = _team_tasks(team)
