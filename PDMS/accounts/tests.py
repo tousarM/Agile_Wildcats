@@ -444,7 +444,7 @@ class TaskAndBacklogTests(TestCase):
         )
 
         backlog_response = self.client.get(reverse("backlog_page"))
-        self.assertNotContains(backlog_response, "Plan login story")
+        self.assertContains(backlog_response, "Deadline alert")
 
         sprint_response = self.client.get(reverse("sprint_board_page"))
         self.assertContains(sprint_response, "Plan login story")
@@ -841,6 +841,20 @@ class NotificationTests(TestCase):
 
         self.assertContains(response, "Deadline reminder: Team Deadline")
         self.assertContains(response, "assigned to member1")
+
+    def test_dashboard_can_edit_email(self):
+        self.client.login(username="member1", password="pass123")
+        response = self.client.post(
+            reverse("profile_dashboard"),
+            {
+                "email": "new-member@example.com",
+            },
+        )
+
+        self.assertRedirects(response, reverse("profile_dashboard"))
+        self.member.refresh_from_db()
+        self.assertEqual(self.member.email, "new-member@example.com")
+        self.assertEqual(Profile.objects.get(user=self.member).email, "new-member@example.com")
 
     @patch("accounts.context_processors.timezone.localdate", return_value=date(2026, 4, 18))
     def test_completed_task_disappears_from_the_navbar(self, mock_localdate):

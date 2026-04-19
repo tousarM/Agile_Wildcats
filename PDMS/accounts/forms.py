@@ -211,3 +211,10 @@ class InviteForm(forms.Form):
         if not User.objects.filter(username=username).exists():
             raise forms.ValidationError("No user with that username exists.")
         return username
+
+
+class ProfileSettingsForm(forms.Form):
+    email = forms.EmailField(
+        required=True,
+        widget=forms.EmailInput(attrs={"class": "form-control", "placeholder": "Email address"}),
+    )

@@ -10,6 +10,20 @@
 <p><strong>Team:</strong> {{ profile.team|default:"No team yet" }}</p>
 
 <hr>
+<h3>Change Settings</h3>
+<form method="post" class="card card-body shadow-sm mb-4">
+  {% csrf_token %}
+  <div class="mb-3">
+    <label class="form-label" for="{{ settings_form.email.id_for_label }}">Email</label>
+    {{ settings_form.email }}
+    {% if settings_form.email.errors %}
+    <div class="text-danger small">{{ settings_form.email.errors }}</div>
+    {% endif %}
+  </div>
+  <button type="submit" class="btn btn-primary align-self-start">Save Settings</button>
+</form>
+
+<hr>
 <h3>Assigned Tasks</h3>
 <ul class="list-unstyled">
   {% for task in tasks %}
