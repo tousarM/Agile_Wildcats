@@ -10,6 +10,7 @@ from .forms import (
     BacklogItemForm,
     CreateTeamForm,
     InviteForm,
+    ProfileSettingsForm,
     RegisterForm,
     SprintForm,
     SprintStatusForm,
@@ -494,7 +495,7 @@ def backlog_page(request):
                         previous_assignee=original_values["assigned_to_username"] if assignee_changed else None,
                         current_assignee=task.assigned_to.username if assignee_changed and task.assigned_to else None,
                         note=note,
-                )
+                    )
 
                 return redirect('backlog_page')
         elif action == 'delete_backlog_item':
@@ -628,6 +629,22 @@ def sprint_board_page(request):
 @login_required(login_url='login')
 def profile_dashboard(request):
     profile = _get_profile(request.user)
+    settings_form = ProfileSettingsForm(
+        initial={
+            "email": request.user.email,
+        }
+    )
+
+    if request.method == 'POST':
+        settings_form = ProfileSettingsForm(request.POST)
+        if settings_form.is_valid():
+            email = settings_form.cleaned_data["email"].strip()
+            request.user.email = email
+            request.user.save(update_fields=["email"])
+            profile.email = email
+            profile.save(update_fields=["email"])
+            return redirect('profile_dashboard')
+
     tasks = (
         Task.objects.filter(assigned_to=request.user)
         .select_related('assigned_to')
@@ -636,6 +653,7 @@ def profile_dashboard(request):
 
     return render(request, "profile_dashboard.html", {
         "profile": profile,
+        "settings_form": settings_form,
         "tasks": tasks.order_by('due_date', 'title'),
     })
 

@@ -94,7 +94,7 @@
       {{ status_label }} <span class="badge bg-secondary col-count">{{ col_tasks|length }}</span>
     </h6>
     {% for task in col_tasks %}
-    <div class="card mb-2 task-card {% if task.due_date %}{% if task.due_date < today %}overdue{% elif task.due_date <= soon %}due-soon{% endif %}{% endif %}"
+    <div class="card mb-2 task-card {% if task.deadline_state == 'expired' %}overdue{% elif task.deadline_state == 'due_soon' %}due-soon{% endif %}"
          data-assignee="{{ task.assigned_to.username|default:'__unassigned__' }}"
          data-bs-toggle="modal"
          data-bs-target="#modal-{{ task.id }}"
@@ -106,6 +106,9 @@
         {% endif %}
         {% if task.due_date %}
         <small class="text-muted">Due {{ task.due_date|date:"M d" }}</small>
+        {% endif %}
+        {% if task.deadline_state %}
+        <div><span class="badge {{ task.deadline_badge_class }}">{{ task.deadline_label }}</span></div>
         {% endif %}
         {% if task.assigned_to %}
         <div><small class="text-muted">{{ task.assigned_to.username }}</small></div>
@@ -155,6 +158,9 @@
           <p class="mb-1"><strong>Acceptance Criteria:</strong><br>{{ task.acceptance_criteria|linebreaksbr }}</p>
         {% endif %}
         <p class="mb-1"><strong>Due:</strong> {{ task.due_date|default:"No due date" }}</p>
+        {% if task.deadline_state %}
+        <p class="mb-1"><strong>Deadline:</strong> <span class="badge {{ task.deadline_badge_class }}">{{ task.deadline_label }}</span></p>
+        {% endif %}
         <p class="mb-1"><strong>Assigned to:</strong>
           {% if task.assigned_to %}{{ task.assigned_to.username }}{% else %}Unassigned{% endif %}
         </p>

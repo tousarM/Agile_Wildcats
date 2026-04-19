@@ -20,17 +20,50 @@
     }
     nav {
       background: #0056b3;
-      padding: 10px;
-      text-align: center;
+      padding: 10px 16px;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
     }
     nav a {
       color: #fff;
-      margin: 0 15px;
       text-decoration: none;
       font-weight: bold;
     }
     nav a:hover {
       text-decoration: underline;
+    }
+    .nav-link-pill {
+      color: #fff;
+      text-decoration: none;
+      font-weight: bold;
+      padding: 0.4rem 0.75rem;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.12);
+    }
+    .deadline-trigger {
+      color: #fff;
+      font-weight: bold;
+      padding: 0.4rem 0.85rem;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.12);
+      border: 0;
+    }
+    .nav-link-pill:hover {
+      color: #fff;
+      text-decoration: none;
+      background: rgba(255, 255, 255, 0.2);
+    }
+    .deadline-trigger:hover {
+      color: #fff;
+      text-decoration: none;
+      background: rgba(255, 255, 255, 0.2);
+    }
+    .notification-dropdown .dropdown-menu {
+      min-width: 420px;
+      max-width: min(96vw, 560px);
     }
     .container {
       padding: clamp(16px, 2.5vw, 30px);
@@ -67,19 +100,62 @@
   </header>
 
   <nav>
-    <a href="{% url 'home' %}">Home</a>
+    <a href="{% url 'home' %}" class="nav-link-pill">Home</a>
     {% if request.user.is_authenticated %}
-      <a href="{% url 'backlog_page' %}">Backlog</a>
-      <a href="{% url 'sprint_board_page' %}">Sprints</a>
-      <a href="{% url 'task_page' %}">Tasks</a>
-      <a href="{% url 'boards' %}">Board</a>
-      <a href="{% url 'team_page' %}">Team</a>
-      <a href="{% url 'logout' %}">Logout</a>
+      <a href="{% url 'profile_dashboard' %}" class="nav-link-pill">Dashboard</a>
+      <a href="{% url 'backlog_page' %}" class="nav-link-pill">Backlog</a>
+      <a href="{% url 'sprint_board_page' %}" class="nav-link-pill">Sprints</a>
+      <a href="{% url 'task_page' %}" class="nav-link-pill">Tasks</a>
+      <a href="{% url 'boards' %}" class="nav-link-pill">Board</a>
+      <a href="{% url 'team_page' %}" class="nav-link-pill">Team</a>
+      <div class="dropdown notification-dropdown">
+        <button class="deadline-trigger dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false" aria-label="Deadlines">
+          🔔
+          {% if notification_unread_count %}
+          <span class="badge text-bg-danger ms-1">{{ notification_unread_count }}</span>
+          {% endif %}
+        </button>
+        <ul class="dropdown-menu dropdown-menu-end shadow">
+          <li class="dropdown-header">Upcoming deadlines</li>
+          {% if recent_notifications %}
+            {% for notification in recent_notifications %}
+            <li>
+              <div class="dropdown-item-text fw-semibold">
+                <div>{{ notification.title }}</div>
+                <div class="small text-muted">{{ notification.message }}</div>
+                <div class="small text-muted mt-1">Due {{ notification.due_date|date:"M d, Y" }}</div>
+              </div>
+            </li>
+            {% endfor %}
+          {% else %}
+            <li><span class="dropdown-item-text text-muted">No deadlines coming up.</span></li>
+          {% endif %}
+        </ul>
+      </div>
+      <a href="{% url 'logout' %}" class="nav-link-pill">Logout</a>
     {% else %}
-      <a href="{% url 'login' %}">Login</a>
-      <a href="{% url 'register' %}">Register</a>
+      <a href="{% url 'login' %}" class="nav-link-pill">Login</a>
+      <a href="{% url 'register' %}" class="nav-link-pill">Register</a>
     {% endif %}
   </nav>
+
+  {% if request.user.is_authenticated and notification_unread_count %}
+  <div class="container mt-3 mb-n2">
+    <div class="alert alert-warning border d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-2 mb-0">
+      <div>
+        <strong>Deadline alert</strong>
+        {% with notification=recent_notifications.0 %}
+        <span class="ms-1">
+          {{ notification.title }} - {{ notification.message }}
+        </span>
+        {% endwith %}
+      </div>
+      <div class="small text-muted">
+        {{ notification_unread_count }} task{{ notification_unread_count|pluralize }} need attention
+      </div>
+    </div>
+  </div>
+  {% endif %}
 
   <div class="container mt-5">
     {% block content %}

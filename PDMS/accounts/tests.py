@@ -1,5 +1,7 @@
 import shutil
+from datetime import date
 from pathlib import Path
+from unittest.mock import patch
 
 from django.contrib.auth.models import User
 from django.core.files.uploadedfile import SimpleUploadedFile
@@ -442,7 +444,7 @@ class TaskAndBacklogTests(TestCase):
         )
 
         backlog_response = self.client.get(reverse("backlog_page"))
-        self.assertNotContains(backlog_response, "Plan login story")
+        self.assertContains(backlog_response, "Deadline alert")
 
         sprint_response = self.client.get(reverse("sprint_board_page"))
         self.assertContains(sprint_response, "Plan login story")
@@ -758,6 +760,138 @@ class TaskAndBacklogTests(TestCase):
             },
         )
         self.assertEqual(post_response.status_code, 403)
+
+
+class NotificationTests(TestCase):
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        cls._temp_media_root = Path(__file__).resolve().parents[1] / "test_media_notifications"
+        cls._temp_media_root.mkdir(exist_ok=True)
+        cls._media_override = override_settings(MEDIA_ROOT=str(cls._temp_media_root))
+        cls._media_override.enable()
+
+    @classmethod
+    def tearDownClass(cls):
+        cls._media_override.disable()
+        shutil.rmtree(cls._temp_media_root, ignore_errors=True)
+        super().tearDownClass()
+
+    def setUp(self):
+        self.team = Team.objects.create(name="Notifications")
+        self.manager = self._create_user("manager1", "manager", "Manager One")
+        self.member = self._create_user("member1", "member", "Member One")
+
+    def _create_user(self, username, role, name):
+        user = User.objects.create_user(
+            username=username,
+            email=f"{username}@example.com",
+            password="pass123",
+        )
+        profile = user.profile
+        profile.name = name
+        profile.role = role
+        profile.team = self.team
+        profile.email = user.email
+        profile.save()
+        return user
+
+    def _create_task(self, **overrides):
+        defaults = {
+            "title": "Sample Notification Task",
+            "description": "Sample description",
+            "status": "todo",
+            "team": self.team,
+            "priority": "medium",
+            "backlog_state": "backlog",
+            "item_type": "story",
+            "acceptance_criteria": "",
+            "assigned_to": self.member,
+            "sprint": None,
+        }
+        defaults.update(overrides)
+        return Task.objects.create(**defaults)
+
+    @patch("accounts.context_processors.timezone.localdate", return_value=date(2026, 4, 18))
+    def test_deadline_notification_appears_in_the_navbar(self, mock_localdate):
+        self._create_task(
+            title="Deadline Reminder",
+            due_date=date(2026, 4, 19),
+            assigned_to=self.member,
+        )
+        self.client.login(username="member1", password="pass123")
+
+        response = self.client.get(reverse("welcome"))
+
+        self.assertContains(response, "Deadline alert")
+        self.assertContains(response, "🔔")
+        self.assertContains(response, "Deadline reminder: Deadline Reminder")
+        self.assertContains(response, "Due Apr 19, 2026")
+
+    @patch("accounts.context_processors.timezone.localdate", return_value=date(2026, 4, 18))
+    def test_team_deadline_shows_even_when_assigned_to_someone_else(self, mock_localdate):
+        self._create_task(
+            title="Team Deadline",
+            due_date=date(2026, 4, 19),
+            assigned_to=self.member,
+        )
+        self.client.login(username="manager1", password="pass123")
+
+        response = self.client.get(reverse("welcome"))
+
+        self.assertContains(response, "Deadline reminder: Team Deadline")
+        self.assertContains(response, "assigned to member1")
+
+    def test_dashboard_can_edit_email(self):
+        self.client.login(username="member1", password="pass123")
+        response = self.client.post(
+            reverse("profile_dashboard"),
+            {
+                "email": "new-member@example.com",
+            },
+        )
+
+        self.assertRedirects(response, reverse("profile_dashboard"))
+        self.member.refresh_from_db()
+        self.assertEqual(self.member.email, "new-member@example.com")
+        self.assertEqual(Profile.objects.get(user=self.member).email, "new-member@example.com")
+
+    @patch("accounts.context_processors.timezone.localdate", return_value=date(2026, 4, 18))
+    def test_completed_task_disappears_from_the_navbar(self, mock_localdate):
+        task = self._create_task(
+            title="Finish the release note",
+            due_date=date(2026, 4, 18),
+            assigned_to=self.member,
+        )
+        self.client.login(username="member1", password="pass123")
+        self.client.get(reverse("welcome"))
+
+        response = self.client.post(
+            reverse("task_page"),
+            {
+                "action": "update_progress",
+                "task_id": task.id,
+                "status": "done",
+                "note": "Wrapped up the last item.",
+            },
+        )
+
+        self.assertRedirects(response, reverse("task_page"))
+        updated_response = self.client.get(reverse("welcome"))
+        self.assertNotContains(updated_response, "Finish the release note")
+
+    @patch("accounts.context_processors.timezone.localdate", return_value=date(2026, 4, 18))
+    def test_expired_task_is_marked_expired(self, mock_localdate):
+        self._create_task(
+            title="Late task",
+            due_date=date(2026, 4, 17),
+            assigned_to=self.member,
+        )
+        self.client.login(username="member1", password="pass123")
+
+        response = self.client.get(reverse("boards"))
+
+        self.assertContains(response, "Expired")
 
 
 class TaskUpdateMigrationTests(TransactionTestCase):

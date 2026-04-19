@@ -97,7 +97,12 @@
         {% endif %}
       </td>
       <td>{{ task.assigned_to.username|default:"Unassigned" }}</td>
-      <td>{{ task.due_date|default:"-" }}</td>
+      <td>
+        {{ task.due_date|default:"-" }}
+        {% if task.deadline_state %}
+        <div><span class="badge {{ task.deadline_badge_class }}">{{ task.deadline_label }}</span></div>
+        {% endif %}
+      </td>
     </tr>
     {% endfor %}
   </tbody>

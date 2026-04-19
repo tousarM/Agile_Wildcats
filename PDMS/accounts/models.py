@@ -3,6 +3,7 @@ from django.db import models
 from django.contrib.auth.models import User
 from django.core.exceptions import ValidationError
 from pathlib import PurePath
+from django.utils import timezone
 
 class Team(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -134,6 +135,36 @@ class Task(models.Model):
 
     def __str__(self):
         return f"{self.title} ({self.status})"
+
+    @property
+    def deadline_state(self):
+        if not self.due_date or self.status == "done":
+            return ""
+
+        days_remaining = (self.due_date - timezone.localdate()).days
+        if days_remaining < 0:
+            return "expired"
+        if days_remaining == 0:
+            return "due_today"
+        if days_remaining <= 3:
+            return "due_soon"
+        return ""
+
+    @property
+    def deadline_label(self):
+        return {
+            "expired": "Expired",
+            "due_today": "Due today",
+            "due_soon": "Due soon",
+        }.get(self.deadline_state, "")
+
+    @property
+    def deadline_badge_class(self):
+        return {
+            "expired": "bg-danger",
+            "due_today": "bg-warning text-dark",
+            "due_soon": "bg-primary",
+        }.get(self.deadline_state, "")
 
 
 class TaskUpdate(models.Model):
