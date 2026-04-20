@@ -1,10 +1,12 @@
 from urllib import request
 from django.shortcuts import get_object_or_404, render, redirect
+from django.contrib import messages
 from django.contrib.auth.models import User
 from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied
 from django.db.models import Case, IntegerField, Value, When
+from django.utils import timezone
 from .forms import (
     BacklogGroomForm,
     BacklogItemForm,
@@ -41,6 +43,10 @@ def _can_update_task(user, is_manager, task):
     return is_manager or task.assigned_to_id == user.id
 
 
+def _can_review_task(user, is_manager, task):
+    return is_manager or task.reviewer_id == user.id
+
+
 def _assignable_users_for_team(team):
     return User.objects.filter(profile__team=team, is_active=True).order_by('username')
 
@@ -56,6 +62,9 @@ def _team_tasks(team):
     return (
         Task.objects.filter(team=team)
         .select_related('assigned_to')
+        .select_related('reviewer')
+        .select_related('review_requested_by')
+        .select_related('reviewed_by')
         .select_related('sprint')
         .prefetch_related('updates__author')
     )
@@ -121,6 +130,138 @@ def _redirect_after_task_action(request, default_view="task_page"):
     return redirect(default_view)
 
 
+def _task_action_error(request, message, default_view="task_page"):
+    messages.error(request, message)
+    return _redirect_after_task_action(request, default_view)
+
+
+def _clear_review_state(task):
+    task.review_state = 'not_requested'
+    task.review_feedback = ''
+    task.reviewer = None
+    task.review_requested_by = None
+    task.review_requested_at = None
+    task.reviewed_by = None
+    task.reviewed_at = None
+
+
+def _request_review(task, reviewer, requester):
+    task.status = 'in_review'
+    task.reviewer = reviewer
+    task.review_state = 'requested'
+    task.review_feedback = ''
+    task.review_requested_by = requester
+    task.review_requested_at = timezone.now()
+    task.reviewed_by = None
+    task.reviewed_at = None
+
+
+def _apply_task_update(request, task, *, is_manager, assignable_users, allow_assignment):
+    valid_statuses = {choice[0] for choice in Task.STATUS_CHOICES}
+    new_status = request.POST.get('status', task.status)
+    note = request.POST.get('note', '').strip()
+    attachment = request.FILES.get('attachment')
+
+    if new_status not in valid_statuses:
+        return _task_action_error(request, "That status is not valid for this task.")
+
+    previous_assignee = task.assigned_to
+    previous_status = task.status
+    previous_review_state = task.review_state
+    previous_reviewer = task.reviewer
+    note_parts = []
+
+    if allow_assignment and is_manager:
+        assigned_to_id = request.POST.get('assigned_to')
+        task.assigned_to = assignable_users.filter(pk=assigned_to_id).first() if assigned_to_id else None
+
+    assignee_changed = previous_assignee != task.assigned_to
+    if assignee_changed and previous_review_state != 'not_requested':
+        _clear_review_state(task)
+        note_parts.append("Review workflow reset because ownership changed.")
+
+    reviewer_id = request.POST.get('reviewer', '').strip()
+    selected_reviewer = assignable_users.filter(pk=reviewer_id).first() if reviewer_id else None
+
+    if new_status == 'in_review':
+        if not task.assigned_to:
+            return _task_action_error(request, "Assign the task before requesting a review.")
+
+        reviewer = selected_reviewer or previous_reviewer
+        if reviewer is None:
+            return _task_action_error(request, "Choose a reviewer before moving a task into review.")
+        if reviewer.id == task.assigned_to_id:
+            return _task_action_error(request, "Reviewer must be another teammate.")
+
+        already_waiting_on_same_reviewer = (
+            previous_status == 'in_review'
+            and previous_review_state == 'requested'
+            and previous_reviewer == reviewer
+        )
+        already_approved_by_same_reviewer = (
+            previous_status == 'in_review'
+            and previous_review_state == 'approved'
+            and previous_reviewer == reviewer
+        )
+
+        if not already_waiting_on_same_reviewer and not already_approved_by_same_reviewer:
+            _request_review(task, reviewer, request.user)
+            note_parts.append(f"Review requested from {reviewer.username}.")
+        else:
+            task.status = 'in_review'
+            task.reviewer = reviewer
+
+    elif new_status == 'done':
+        if not is_manager:
+            if task.assigned_to_id != request.user.id:
+                raise PermissionDenied
+            if not task.is_review_approved or task.reviewed_by_id == task.assigned_to_id:
+                return _task_action_error(
+                    request,
+                    "This ticket must be approved by another teammate before it can be marked done.",
+                )
+        elif not task.is_review_approved:
+            task.review_state = 'approved'
+            task.review_feedback = ''
+            task.reviewed_by = request.user
+            task.reviewed_at = timezone.now()
+            if task.reviewer_id is None and task.assigned_to_id != request.user.id:
+                task.reviewer = request.user
+            note_parts.append("Manager override approved the task for completion.")
+
+        task.status = 'done'
+
+    else:
+        task.status = new_status
+        if previous_review_state == 'requested' and previous_status == 'in_review':
+            _clear_review_state(task)
+            note_parts.append("Review request canceled.")
+        elif previous_review_state == 'approved' and previous_status in {'in_review', 'done'}:
+            _clear_review_state(task)
+            note_parts.append("Review approval cleared because work resumed.")
+
+    task.save()
+
+    status_changed = previous_status != task.status
+    assignee_changed = previous_assignee != task.assigned_to
+    combined_note = " ".join(part for part in [*note_parts, note] if part)
+
+    if assignee_changed or status_changed or combined_note or attachment:
+        TaskUpdate.objects.create(
+            task=task,
+            author=request.user,
+            status=task.status,
+            status_changed=status_changed,
+            previous_status=previous_status if status_changed else None,
+            previous_assignee=previous_assignee.username if assignee_changed and previous_assignee else None,
+            current_assignee=task.assigned_to.username if assignee_changed and task.assigned_to else None,
+            note=combined_note,
+            attachment=attachment,
+        )
+
+    return _redirect_after_task_action(request)
+
+
 def _log_task_created(task, author):
     TaskUpdate.objects.create(
         task=task,
@@ -156,6 +297,21 @@ def _log_task_note(task, author, note):
         previous_assignee=None,
         current_assignee=None,
         note=note,
+    )
+
+
+def _move_task_to_backlog(task, author):
+    previous_sprint_name = task.sprint.name if task.sprint else None
+    if not previous_sprint_name:
+        return
+
+    task.sprint = None
+    _sync_task_backlog_state(task)
+    task.save(update_fields=['sprint', 'backlog_state', 'updated_at'])
+    _log_task_note(
+        task,
+        author,
+        f"Sprint changed from {previous_sprint_name} to Product Backlog.",
     )
 
 
@@ -348,41 +504,68 @@ def task_page(request):
             task = get_object_or_404(Task, pk=request.POST.get('task_id'), team=team)
             if not _can_update_task(request.user, is_manager, task):
                 raise PermissionDenied
+            return _apply_task_update(
+                request,
+                task,
+                is_manager=is_manager,
+                assignable_users=assignable_users,
+                allow_assignment=True,
+            )
 
-            previous_assignee = task.assigned_to
-            previous_status = task.status
-            note = request.POST.get('note', '').strip()
-            attachment = request.FILES.get('attachment')
-            valid_statuses = {choice[0] for choice in Task.STATUS_CHOICES}
-            new_status = request.POST.get('status', task.status)
-
-            if new_status not in valid_statuses:
+        if action == 'review_task':
+            task = get_object_or_404(Task, pk=request.POST.get('task_id'), team=team)
+            if not _can_review_task(request.user, is_manager, task):
                 raise PermissionDenied
+            if not task.is_review_pending:
+                return _task_action_error(request, "This task is not currently waiting for review.")
 
-            if is_manager:
-                assigned_to_id = request.POST.get('assigned_to')
-                task.assigned_to = assignable_users.filter(pk=assigned_to_id).first() if assigned_to_id else None
+            decision = request.POST.get('review_decision', '').strip()
+            feedback = request.POST.get('review_feedback', '').strip()
+            previous_status = task.status
 
-            task.status = new_status
-            task.save()
-
-            assignee_changed = previous_assignee != task.assigned_to
-            status_changed = previous_status != task.status
-
-            if assignee_changed or status_changed or note or attachment:
+            if decision == 'approve':
+                task.review_state = 'approved'
+                task.review_feedback = ''
+                task.reviewed_by = request.user
+                task.reviewed_at = timezone.now()
+                task.save(update_fields=['review_state', 'review_feedback', 'reviewed_by', 'reviewed_at', 'updated_at'])
                 TaskUpdate.objects.create(
                     task=task,
                     author=request.user,
                     status=task.status,
-                    status_changed=status_changed,
-                    previous_status=previous_status if status_changed else None,
-                    previous_assignee=previous_assignee.username if assignee_changed and previous_assignee else None,
-                    current_assignee=task.assigned_to.username if assignee_changed and task.assigned_to else None,
-                    note=note,
-                    attachment=attachment,
+                    status_changed=False,
+                    previous_status=None,
+                    previous_assignee=None,
+                    current_assignee=None,
+                    note=f"Review approved by {request.user.username}.",
                 )
+                messages.success(request, f"Approved review for {task.title}.")
+                return _redirect_after_task_action(request)
 
-            return _redirect_after_task_action(request)
+            if decision == 'changes_requested':
+                if not feedback:
+                    return _task_action_error(request, "Feedback is required when requesting changes.")
+
+                task.status = 'in_progress'
+                task.review_state = 'changes_requested'
+                task.review_feedback = feedback
+                task.reviewed_by = request.user
+                task.reviewed_at = timezone.now()
+                task.save(update_fields=['status', 'review_state', 'review_feedback', 'reviewed_by', 'reviewed_at', 'updated_at'])
+                TaskUpdate.objects.create(
+                    task=task,
+                    author=request.user,
+                    status=task.status,
+                    status_changed=previous_status != task.status,
+                    previous_status=previous_status if previous_status != task.status else None,
+                    previous_assignee=None,
+                    current_assignee=None,
+                    note=f"Review changes requested by {request.user.username}. {feedback}",
+                )
+                messages.success(request, f"Sent review feedback for {task.title}.")
+                return _redirect_after_task_action(request)
+
+            return _task_action_error(request, "Choose a review decision before saving.")
 
         #  Manager assignment / unassignment
         if action == 'update_assignment':
@@ -392,12 +575,17 @@ def task_page(request):
             previous_assignee = task.assigned_to
             assigned_to_id = request.POST.get('assigned_to')
             task.assigned_to = assignable_users.filter(pk=assigned_to_id).first() if assigned_to_id else None
+            review_reset = previous_assignee != task.assigned_to and task.review_state != 'not_requested'
+            if review_reset:
+                _clear_review_state(task)
             task.save()
 
             note = (
                 f"{TaskUpdate.SYSTEM_ASSIGNED_PREFIX}{task.assigned_to.username}."
                 if task.assigned_to else TaskUpdate.SYSTEM_UNASSIGNED_NOTE
             )
+            if review_reset:
+                note = f"{note} Review workflow reset because ownership changed."
             TaskUpdate.objects.create(
                 task=task,
                 author=request.user,
@@ -415,29 +603,13 @@ def task_page(request):
             task = get_object_or_404(Task, pk=request.POST.get('task_id'), team=team)
             if not _can_update_task(request.user, is_manager, task):
                 raise PermissionDenied
-
-            new_status = request.POST.get('status', task.status)
-            note = request.POST.get('note', '').strip()
-            attachment = request.FILES.get('attachment')
-            valid_statuses = {choice[0] for choice in Task.STATUS_CHOICES}
-
-            if new_status in valid_statuses:
-                previous_status = task.status
-                task.status = new_status
-                task.save()
-
-                TaskUpdate.objects.create(
-                    task=task,
-                    author=request.user,
-                    status=task.status,
-                    status_changed=previous_status != new_status,
-                    previous_status=previous_status if previous_status != new_status else None,
-                    previous_assignee=None,
-                    current_assignee=None,
-                    note=note,
-                    attachment=attachment,
-                )
-            return _redirect_after_task_action(request)
+            return _apply_task_update(
+                request,
+                task,
+                is_manager=is_manager,
+                assignable_users=assignable_users,
+                allow_assignment=False,
+            )
 
         # Delete task
         if action == 'delete_task':
@@ -634,20 +806,24 @@ def sprint_board_page(request):
             sprint_tasks = list(_team_tasks(team).filter(sprint=sprint))
 
             for task in sprint_tasks:
-                task.sprint = None
-                _sync_task_backlog_state(task)
-                task.save(update_fields=['sprint', 'backlog_state', 'updated_at'])
-                _log_task_note(
-                    task,
-                    request.user,
-                    f"Sprint changed from {sprint.name} to Product Backlog.",
-                )
+                _move_task_to_backlog(task, request.user)
 
             selected_sprint_id = request.POST.get('selected_sprint', '').strip()
             if selected_sprint_id == str(sprint.id):
                 selected_sprint_id = ''
             sprint.delete()
             return _redirect_to_sprint_board(request, selected_sprint_id)
+        elif action == 'remove_task_from_sprint':
+            task = get_object_or_404(Task, pk=request.POST.get('task_id'), team=team)
+            if task.sprint_id is None:
+                messages.info(request, f"{task.title} is already in the backlog.")
+            else:
+                _move_task_to_backlog(task, request.user)
+                messages.success(request, f"Moved {task.title} back to the backlog.")
+            return _redirect_to_sprint_board(
+                request,
+                request.POST.get('selected_sprint', '').strip(),
+            )
 
     sprints = [selected_sprint] if selected_sprint else filter_sprints
     for sprint in sprints:
@@ -693,14 +869,37 @@ def profile_dashboard(request):
 
     tasks = (
         Task.objects.filter(assigned_to=request.user)
-        .select_related('assigned_to')
+        .select_related('assigned_to', 'reviewer', 'reviewed_by', 'sprint')
         .prefetch_related('updates__author')
     )
+
+    incoming_review_requests = Task.objects.none()
+    review_feedback_tasks = Task.objects.none()
+    ready_to_finish_tasks = Task.objects.none()
+
+    if profile.team:
+        team_tasks = _team_tasks(profile.team)
+        incoming_review_requests = team_tasks.filter(
+            reviewer=request.user,
+            review_state='requested',
+            status='in_review',
+        ).order_by('due_date', 'title')
+        review_feedback_tasks = team_tasks.filter(
+            assigned_to=request.user,
+            review_state='changes_requested',
+        ).order_by('due_date', 'title')
+        ready_to_finish_tasks = team_tasks.filter(
+            assigned_to=request.user,
+            review_state='approved',
+        ).exclude(status='done').order_by('due_date', 'title')
 
     return render(request, "profile_dashboard.html", {
         "profile": profile,
         "settings_form": settings_form,
         "tasks": tasks.order_by('due_date', 'title'),
+        "incoming_review_requests": incoming_review_requests,
+        "review_feedback_tasks": review_feedback_tasks,
+        "ready_to_finish_tasks": ready_to_finish_tasks,
     })
 
 

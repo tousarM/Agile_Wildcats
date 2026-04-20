@@ -79,7 +79,15 @@ class Task(models.Model):
     STATUS_CHOICES = [
         ('todo', 'To Do'),
         ('in_progress', 'In Progress'),
+        ('in_review', 'In Review'),
         ('done', 'Done')
+    ]
+
+    REVIEW_STATE_CHOICES = [
+        ('not_requested', 'No Review Yet'),
+        ('requested', 'Review Requested'),
+        ('changes_requested', 'Changes Requested'),
+        ('approved', 'Review Approved'),
     ]
 
     title = models.CharField(max_length=200)
@@ -113,6 +121,27 @@ class Task(models.Model):
         blank=True,
         related_name="tasks",
     )
+    reviewer = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="review_tasks",
+    )
+    review_requested_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="requested_reviews",
+    )
+    reviewed_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="completed_reviews",
+    )
     team = models.ForeignKey(
         'Team', null=True, blank=True, on_delete=models.SET_NULL, related_name='tasks'
     )
@@ -130,6 +159,14 @@ class Task(models.Model):
         null=True,
         blank=True
     )
+    review_state = models.CharField(
+        max_length=30,
+        choices=REVIEW_STATE_CHOICES,
+        default='not_requested',
+    )
+    review_feedback = models.TextField(blank=True)
+    review_requested_at = models.DateTimeField(null=True, blank=True)
+    reviewed_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -165,6 +202,26 @@ class Task(models.Model):
             "due_today": "bg-warning text-dark",
             "due_soon": "bg-primary",
         }.get(self.deadline_state, "")
+
+    @property
+    def is_review_pending(self):
+        return self.status == "in_review" and self.review_state == "requested" and self.reviewer_id is not None
+
+    @property
+    def is_review_approved(self):
+        return self.review_state == "approved" and self.reviewed_by_id is not None
+
+    @property
+    def review_badge_class(self):
+        return {
+            "requested": "text-bg-info",
+            "changes_requested": "bg-warning text-dark",
+            "approved": "text-bg-success",
+        }.get(self.review_state, "")
+
+    @property
+    def review_status_label(self):
+        return dict(self.REVIEW_STATE_CHOICES).get(self.review_state, "")
 
 
 class TaskUpdate(models.Model):

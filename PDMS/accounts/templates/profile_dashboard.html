@@ -24,6 +24,59 @@
 </form>
 
 <hr>
+<h3>Review Inbox</h3>
+<div class="row g-3 mb-4">
+  <div class="col-lg-4">
+    <div class="card shadow-sm h-100">
+      <div class="card-body">
+        <h5 class="card-title">Needs My Review</h5>
+        {% if incoming_review_requests %}
+        <ul class="mb-0 ps-3">
+          {% for task in incoming_review_requests %}
+          <li>{{ task.title }}{% if task.assigned_to %} from {{ task.assigned_to.username }}{% endif %}</li>
+          {% endfor %}
+        </ul>
+        {% else %}
+        <p class="text-muted mb-0">No review requests are waiting on you.</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  <div class="col-lg-4">
+    <div class="card shadow-sm h-100">
+      <div class="card-body">
+        <h5 class="card-title">Feedback To Address</h5>
+        {% if review_feedback_tasks %}
+        <ul class="mb-0 ps-3">
+          {% for task in review_feedback_tasks %}
+          <li>{{ task.title }}: {{ task.review_feedback }}</li>
+          {% endfor %}
+        </ul>
+        {% else %}
+        <p class="text-muted mb-0">No review feedback is waiting on you.</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  <div class="col-lg-4">
+    <div class="card shadow-sm h-100">
+      <div class="card-body">
+        <h5 class="card-title">Ready To Finish</h5>
+        {% if ready_to_finish_tasks %}
+        <ul class="mb-0 ps-3">
+          {% for task in ready_to_finish_tasks %}
+          <li>{{ task.title }}{% if task.reviewed_by %} approved by {{ task.reviewed_by.username }}{% endif %}</li>
+          {% endfor %}
+        </ul>
+        {% else %}
+        <p class="text-muted mb-0">Nothing is waiting on final completion.</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<hr>
 <h3>Assigned Tasks</h3>
 <ul class="list-unstyled">
   {% for task in tasks %}
@@ -44,6 +97,9 @@
       {% if task.deadline_state %}
       <span class="badge {{ task.deadline_badge_class }}">{{ task.deadline_label }}</span>
       {% endif %}
+      {% if task.review_state != "not_requested" %}
+      <span class="badge {{ task.review_badge_class|default:'text-bg-light' }}">{{ task.review_status_label }}</span>
+      {% endif %}
     </div>
 
     <strong>{{ task.title }}</strong><br>
@@ -56,6 +112,10 @@
       Unassigned
     {% endif %}
     <br>
+    Reviewer: {{ task.reviewer.username|default:"Not selected" }}<br>
+    {% if task.review_feedback %}
+      Review Feedback: {{ task.review_feedback }}<br>
+    {% endif %}
     Last updated: {{ task.updated_at|date:"M d, Y g:i A" }}<br>
     {% if task.description %}
       {{ task.description }}<br>
