@@ -386,7 +386,7 @@ class TaskAndBacklogTests(TestCase):
             {
                 "action": "update_progress",
                 "task_id": task.id,
-                "status": "done",
+                "status": "in_progress",
                 "note": "",
             },
         )
@@ -394,7 +394,193 @@ class TaskAndBacklogTests(TestCase):
         self.assertRedirects(response, reverse("task_page"))
         response = self.client.get(reverse("task_page"))
         self.assertContains(response, '<del class="text-muted">To Do</del>')
-        self.assertContains(response, "Done")
+        self.assertContains(response, "In Progress")
+
+    def test_assignee_cannot_mark_done_without_review_approval(self):
+        task = self._create_task(
+            title="Needs review first",
+            assigned_to=self.general_user,
+            status="in_progress",
+        )
+
+        self.client.login(username="member1", password="pass123")
+        response = self.client.post(
+            reverse("task_page"),
+            {
+                "action": "update_progress",
+                "task_id": task.id,
+                "status": "done",
+                "note": "",
+            },
+            follow=True,
+        )
+
+        task.refresh_from_db()
+        self.assertEqual(task.status, "in_progress")
+        self.assertContains(response, "must be approved by another teammate before it can be marked done")
+
+    def test_assignee_can_request_review_from_another_teammate(self):
+        task = self._create_task(
+            title="Request review",
+            assigned_to=self.general_user,
+            status="in_progress",
+        )
+
+        self.client.login(username="member1", password="pass123")
+        response = self.client.post(
+            reverse("task_page"),
+            {
+                "action": "update_progress",
+                "task_id": task.id,
+                "status": "in_review",
+                "reviewer": self.developer.id,
+                "note": "Ready for review.",
+            },
+        )
+
+        self.assertRedirects(response, reverse("task_page"))
+        task.refresh_from_db()
+        self.assertEqual(task.status, "in_review")
+        self.assertEqual(task.review_state, "requested")
+        self.assertEqual(task.reviewer, self.developer)
+
+        update = TaskUpdate.objects.filter(task=task).latest("created_at")
+        self.assertIn("Review requested from dev1.", update.note)
+        self.assertIn("Ready for review.", update.note)
+
+    def test_reviewer_can_request_changes_and_owner_can_re_request_review(self):
+        task = self._create_task(
+            title="Review changes",
+            assigned_to=self.general_user,
+            status="in_progress",
+        )
+
+        self.client.login(username="member1", password="pass123")
+        self.client.post(
+            reverse("task_page"),
+            {
+                "action": "update_progress",
+                "task_id": task.id,
+                "status": "in_review",
+                "reviewer": self.developer.id,
+                "note": "Initial review request.",
+            },
+        )
+
+        self.client.logout()
+        self.client.login(username="dev1", password="pass123")
+        response = self.client.post(
+            reverse("task_page"),
+            {
+                "action": "review_task",
+                "task_id": task.id,
+                "review_decision": "changes_requested",
+                "review_feedback": "Need stronger tests before this is ready.",
+                "next": "task_page",
+            },
+        )
+
+        self.assertRedirects(response, reverse("task_page"))
+        task.refresh_from_db()
+        self.assertEqual(task.status, "in_progress")
+        self.assertEqual(task.review_state, "changes_requested")
+        self.assertEqual(task.review_feedback, "Need stronger tests before this is ready.")
+
+        self.client.logout()
+        self.client.login(username="member1", password="pass123")
+        second_response = self.client.post(
+            reverse("task_page"),
+            {
+                "action": "update_progress",
+                "task_id": task.id,
+                "status": "in_review",
+                "reviewer": self.other_developer.id,
+                "note": "Addressed the requested changes.",
+            },
+        )
+
+        self.assertRedirects(second_response, reverse("task_page"))
+        task.refresh_from_db()
+        self.assertEqual(task.status, "in_review")
+        self.assertEqual(task.review_state, "requested")
+        self.assertEqual(task.reviewer, self.other_developer)
+
+    def test_assignee_can_mark_done_after_review_approval(self):
+        task = self._create_task(
+            title="Ready to close",
+            assigned_to=self.general_user,
+            status="in_progress",
+        )
+
+        self.client.login(username="member1", password="pass123")
+        self.client.post(
+            reverse("task_page"),
+            {
+                "action": "update_progress",
+                "task_id": task.id,
+                "status": "in_review",
+                "reviewer": self.developer.id,
+                "note": "Please approve this.",
+            },
+        )
+
+        self.client.logout()
+        self.client.login(username="dev1", password="pass123")
+        self.client.post(
+            reverse("task_page"),
+            {
+                "action": "review_task",
+                "task_id": task.id,
+                "review_decision": "approve",
+                "review_feedback": "",
+                "next": "task_page",
+            },
+        )
+
+        self.client.logout()
+        self.client.login(username="member1", password="pass123")
+        response = self.client.post(
+            reverse("task_page"),
+            {
+                "action": "update_progress",
+                "task_id": task.id,
+                "status": "done",
+                "note": "",
+            },
+        )
+
+        self.assertRedirects(response, reverse("task_page"))
+        task.refresh_from_db()
+        self.assertEqual(task.status, "done")
+        self.assertEqual(task.review_state, "approved")
+        self.assertEqual(task.reviewed_by, self.developer)
+
+    def test_manager_can_bypass_review_and_mark_done(self):
+        task = self._create_task(
+            title="Manager override",
+            assigned_to=self.developer,
+            status="in_progress",
+        )
+
+        self.client.login(username="manager1", password="pass123")
+        response = self.client.post(
+            reverse("task_page"),
+            {
+                "action": "update_task",
+                "task_id": task.id,
+                "assigned_to": self.developer.id,
+                "status": "done",
+                "reviewer": self.general_user.id,
+                "note": "Closing this with manager approval.",
+                "next": "task_page",
+            },
+        )
+
+        self.assertRedirects(response, reverse("task_page"))
+        task.refresh_from_db()
+        self.assertEqual(task.status, "done")
+        self.assertEqual(task.review_state, "approved")
+        self.assertEqual(task.reviewed_by, self.manager)
 
     def test_task_without_updates_shows_empty_activity_message(self):
         self._create_task(
@@ -476,7 +662,7 @@ class TaskAndBacklogTests(TestCase):
         )
 
         backlog_response = self.client.get(reverse("backlog_page"))
-        self.assertContains(backlog_response, "Deadline alert")
+        self.assertContains(backlog_response, "Work alert")
 
         sprint_response = self.client.get(reverse("sprint_board_page"))
         self.assertContains(sprint_response, "Plan login story")
@@ -630,6 +816,38 @@ class TaskAndBacklogTests(TestCase):
 
         update = TaskUpdate.objects.filter(task=task).latest("created_at")
         self.assertEqual(update.note, "Sprint changed from Disposable Sprint to Product Backlog.")
+
+    def test_manager_can_remove_single_task_from_sprint(self):
+        sprint = self._create_sprint(name="Focused Sprint", status="active")
+        task = self._create_task(
+            title="Move just me back",
+            sprint=sprint,
+            backlog_state="selected_for_sprint",
+        )
+        self.client.login(username="manager1", password="pass123")
+
+        response = self.client.post(
+            reverse("sprint_board_page"),
+            {
+                "action": "remove_task_from_sprint",
+                "task_id": task.id,
+                "selected_sprint": str(sprint.id),
+            },
+        )
+
+        self.assertRedirects(response, f"{reverse('sprint_board_page')}?sprint={sprint.id}")
+        task.refresh_from_db()
+        self.assertIsNone(task.sprint)
+        self.assertEqual(task.backlog_state, "backlog")
+
+        backlog_response = self.client.get(reverse("backlog_page"))
+        self.assertContains(backlog_response, "Move just me back")
+
+        sprint_response = self.client.get(reverse("sprint_board_page"), {"sprint": str(sprint.id)})
+        self.assertNotContains(sprint_response, "Move just me back")
+
+        update = TaskUpdate.objects.filter(task=task).latest("created_at")
+        self.assertEqual(update.note, "Sprint changed from Focused Sprint to Product Backlog.")
 
     def test_assigning_backlog_ticket_to_sprint_moves_it_to_sprint_board(self):
         sprint = self._create_sprint(name="Planning Sprint")
@@ -855,7 +1073,7 @@ class NotificationTests(TestCase):
 
         response = self.client.get(reverse("welcome"))
 
-        self.assertContains(response, "Deadline alert")
+        self.assertContains(response, "Work alert")
         self.assertContains(response, "🔔")
         self.assertContains(response, "Deadline reminder: Deadline Reminder")
         self.assertContains(response, "Due Apr 19, 2026")
@@ -895,22 +1113,87 @@ class NotificationTests(TestCase):
             due_date=date(2026, 4, 18),
             assigned_to=self.member,
         )
-        self.client.login(username="member1", password="pass123")
+        self.client.login(username="manager1", password="pass123")
         self.client.get(reverse("welcome"))
 
         response = self.client.post(
             reverse("task_page"),
             {
-                "action": "update_progress",
+                "action": "update_task",
                 "task_id": task.id,
+                "assigned_to": self.member.id,
                 "status": "done",
                 "note": "Wrapped up the last item.",
+                "next": "task_page",
             },
         )
 
         self.assertRedirects(response, reverse("task_page"))
         updated_response = self.client.get(reverse("welcome"))
         self.assertNotContains(updated_response, "Finish the release note")
+
+    @patch("accounts.context_processors.timezone.localdate", return_value=date(2026, 4, 18))
+    def test_review_request_notification_appears_for_reviewer(self, mock_localdate):
+        self._create_task(
+            title="Review my work",
+            due_date=date(2026, 4, 20),
+            assigned_to=self.member,
+            reviewer=self.manager,
+            status="in_review",
+            review_state="requested",
+        )
+        self.client.login(username="manager1", password="pass123")
+
+        response = self.client.get(reverse("welcome"))
+
+        self.assertContains(response, "Review requested: Review my work")
+        self.assertContains(response, "asked you to review Review my work")
+
+    def test_dashboard_shows_review_sections(self):
+        Task.objects.create(
+            title="Awaiting my review",
+            description="",
+            status="in_review",
+            team=self.team,
+            assigned_to=self.member,
+            reviewer=self.manager,
+            review_state="requested",
+        )
+        Task.objects.create(
+            title="Feedback received",
+            description="",
+            status="in_progress",
+            team=self.team,
+            assigned_to=self.member,
+            reviewer=self.manager,
+            reviewed_by=self.manager,
+            review_state="changes_requested",
+            review_feedback="Please add one more validation case.",
+        )
+        Task.objects.create(
+            title="Ready to finish",
+            description="",
+            status="in_review",
+            team=self.team,
+            assigned_to=self.member,
+            reviewer=self.manager,
+            reviewed_by=self.manager,
+            review_state="approved",
+        )
+
+        self.client.login(username="member1", password="pass123")
+        response = self.client.get(reverse("profile_dashboard"))
+
+        self.assertContains(response, "Feedback To Address")
+        self.assertContains(response, "Feedback received")
+        self.assertContains(response, "Ready To Finish")
+        self.assertContains(response, "Ready to finish")
+
+        self.client.logout()
+        self.client.login(username="manager1", password="pass123")
+        reviewer_response = self.client.get(reverse("profile_dashboard"))
+        self.assertContains(reviewer_response, "Needs My Review")
+        self.assertContains(reviewer_response, "Awaiting my review")
 
     @patch("accounts.context_processors.timezone.localdate", return_value=date(2026, 4, 18))
     def test_expired_task_is_marked_expired(self, mock_localdate):

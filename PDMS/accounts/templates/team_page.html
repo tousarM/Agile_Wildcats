@@ -90,10 +90,15 @@
       <td>
         {% if task.status == 'done' %}
           <span class="badge bg-success">{{ task.get_status_display }}</span>
+        {% elif task.status == 'in_review' %}
+          <span class="badge bg-info text-dark">{{ task.get_status_display }}</span>
         {% elif task.status == 'in_progress' %}
           <span class="badge bg-warning text-dark">{{ task.get_status_display }}</span>
         {% else %}
           <span class="badge bg-secondary">{{ task.get_status_display }}</span>
+        {% endif %}
+        {% if task.review_state != "not_requested" %}
+        <div><span class="badge {{ task.review_badge_class|default:'text-bg-light' }}">{{ task.review_status_label }}</span></div>
         {% endif %}
       </td>
       <td>{{ task.assigned_to.username|default:"Unassigned" }}</td>

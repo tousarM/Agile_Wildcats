@@ -125,10 +125,15 @@
 
                 {% if item.status == "done" %}
                 <span class="badge text-bg-success">Execution: {{ item.get_status_display }}</span>
+                {% elif item.status == "in_review" %}
+                <span class="badge bg-info text-dark">Execution: {{ item.get_status_display }}</span>
                 {% elif item.status == "in_progress" %}
                 <span class="badge bg-warning text-dark">Execution: {{ item.get_status_display }}</span>
                 {% else %}
                 <span class="badge text-bg-secondary">Execution: {{ item.get_status_display }}</span>
+                {% endif %}
+                {% if item.review_state != "not_requested" %}
+                <span class="badge {{ item.review_badge_class|default:'text-bg-light' }}">{{ item.review_status_label }}</span>
                 {% endif %}
                 {% if item.deadline_state %}
                 <span class="badge {{ item.deadline_badge_class }}">{{ item.deadline_label }}</span>

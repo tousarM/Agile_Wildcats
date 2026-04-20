@@ -116,19 +116,19 @@
           {% endif %}
         </button>
         <ul class="dropdown-menu dropdown-menu-end shadow">
-          <li class="dropdown-header">Upcoming deadlines</li>
+          <li class="dropdown-header">Work alerts</li>
           {% if recent_notifications %}
             {% for notification in recent_notifications %}
             <li>
               <div class="dropdown-item-text fw-semibold">
                 <div>{{ notification.title }}</div>
                 <div class="small text-muted">{{ notification.message }}</div>
-                <div class="small text-muted mt-1">Due {{ notification.due_date|date:"M d, Y" }}</div>
+                <div class="small text-muted mt-1">{{ notification.date_prefix|default:"Updated" }} {{ notification.display_date|date:"M d, Y" }}</div>
               </div>
             </li>
             {% endfor %}
           {% else %}
-            <li><span class="dropdown-item-text text-muted">No deadlines coming up.</span></li>
+            <li><span class="dropdown-item-text text-muted">No alerts right now.</span></li>
           {% endif %}
         </ul>
       </div>
@@ -143,7 +143,7 @@
   <div class="container mt-3 mb-n2">
     <div class="alert alert-warning border d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-2 mb-0">
       <div>
-        <strong>Deadline alert</strong>
+        <strong>Work alert</strong>
         {% with notification=recent_notifications.0 %}
         <span class="ms-1">
           {{ notification.title }} - {{ notification.message }}
@@ -154,6 +154,14 @@
         {{ notification_unread_count }} task{{ notification_unread_count|pluralize }} need attention
       </div>
     </div>
+  </div>
+  {% endif %}
+
+  {% if messages %}
+  <div class="container mt-3 mb-n2">
+    {% for message in messages %}
+    <div class="alert alert-{{ message.tags|default:'info' }} border mb-2">{{ message }}</div>
+    {% endfor %}
   </div>
   {% endif %}
 

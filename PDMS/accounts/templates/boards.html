@@ -144,6 +144,9 @@
             <span class="badge text-bg-secondary">{{ task.get_priority_display }}</span>
             {% endif %}
             <span class="badge text-bg-light">Backlog Stage: {{ task.get_backlog_state_display }}</span>
+            {% if task.review_state != "not_requested" %}
+            <span class="badge {{ task.review_badge_class|default:'text-bg-light' }}">{{ task.review_status_label }}</span>
+            {% endif %}
           </div>
         </div>
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
@@ -164,6 +167,12 @@
         <p class="mb-1"><strong>Assigned to:</strong>
           {% if task.assigned_to %}{{ task.assigned_to.username }}{% else %}Unassigned{% endif %}
         </p>
+        <p class="mb-1"><strong>Reviewer:</strong>
+          {% if task.reviewer %}{{ task.reviewer.username }}{% else %}Not selected{% endif %}
+        </p>
+        {% if task.review_feedback %}
+        <p class="mb-1"><strong>Review feedback:</strong> {{ task.review_feedback }}</p>
+        {% endif %}
         <p class="mb-1"><strong>Last updated:</strong> {{ task.updated_at|date:"M d, Y g:i A" }}</p>
         {% if task.attachment %}
           <p class="mb-1"><a href="{{ task.attachment.url }}" download>Download Attachment</a></p>
@@ -192,12 +201,46 @@
             <option value="{{ status_value }}" {% if task.status == status_value %}selected{% endif %}>{{ status_label }}</option>
             {% endfor %}
           </select>
+          <label for="reviewer_{{ task.id }}">Reviewer:</label>
+          <select id="reviewer_{{ task.id }}" name="reviewer" class="form-select mb-2">
+            <option value="">Choose reviewer</option>
+            {% for u in assignable_users %}
+              {% if u.id != task.assigned_to_id %}
+              <option value="{{ u.id }}" {% if task.reviewer_id == u.id %}selected{% endif %}>{{ u.username }}</option>
+              {% endif %}
+            {% endfor %}
+          </select>
+          <div class="form-text mb-2">
+            {% if task.is_review_pending and task.reviewer %}
+              Waiting on review from {{ task.reviewer.username }}.
+            {% elif task.review_state == "changes_requested" and task.review_feedback %}
+              Changes were requested. Update the task, then move it back to In Review to request another pass.
+            {% elif task.review_state == "approved" %}
+              Review approved. The task owner can now mark this ticket done.
+            {% else %}
+              Move the task to In Review to request approval from another teammate before closing it.
+            {% endif %}
+          </div>
           <label for="note_{{ task.id }}">Progress Note:</label>
           <textarea id="note_{{ task.id }}" name="note" class="form-control mb-2" rows="3" placeholder="Share what changed, blockers, or next steps"></textarea>
           <label for="attachment_{{ task.id }}">Progress Attachment:</label>
           <input id="attachment_{{ task.id }}" type="file" name="attachment" class="form-control mb-2">
           <button type="submit" class="btn btn-sm btn-primary">Save</button>
           <input type="hidden" name="next" value="boards">
+        </form>
+        {% endif %}
+        {% if task.is_review_pending and task.reviewer_id == current_user_id or task.is_review_pending and is_manager %}
+        <form method="post" action="{% url 'task_page' %}" class="mt-3 card card-body bg-light border">
+          {% csrf_token %}
+          <input type="hidden" name="action" value="review_task">
+          <input type="hidden" name="task_id" value="{{ task.id }}">
+          <input type="hidden" name="next" value="boards">
+          <label for="review_feedback_modal_{{ task.id }}" class="form-label mb-1">Review Feedback</label>
+          <textarea id="review_feedback_modal_{{ task.id }}" name="review_feedback" class="form-control mb-2" rows="3" placeholder="Share what needs to change, or leave blank if you're approving."></textarea>
+          <div class="d-flex gap-2 flex-wrap">
+            <button type="submit" name="review_decision" value="approve" class="btn btn-sm btn-success">Approve Review</button>
+            <button type="submit" name="review_decision" value="changes_requested" class="btn btn-sm btn-outline-warning">Request Changes</button>
+          </div>
         </form>
         {% endif %}
         {% if is_manager or task.assigned_to_id == current_user_id %}
