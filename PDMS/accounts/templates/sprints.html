@@ -34,10 +34,14 @@
   {% endif %}
 </div>
 
-{% if filter_sprints %}
 <div class="card shadow-sm mb-4">
   <div class="card-body">
     <form method="get" class="row g-3 align-items-end">
+      <div class="col-sm-8 col-md-6 col-lg-4">
+        <label class="form-label" for="sprint-search">Search Sprint Board</label>
+        <input id="sprint-search" type="search" name="q" value="{{ search_query }}" class="form-control" placeholder="Search sprint tickets, assignees, reviewers, or status">
+      </div>
+      {% if filter_sprints %}
       <div class="col-sm-8 col-md-6 col-lg-4">
         <label class="form-label" for="sprint-filter">View by Sprint</label>
         <select id="sprint-filter" name="sprint" class="form-select">
@@ -49,54 +53,78 @@
           {% endfor %}
         </select>
       </div>
+      {% endif %}
       <div class="col-auto">
         <button type="submit" class="btn btn-outline-primary">Apply Filter</button>
       </div>
-      {% if selected_sprint_id %}
+      {% if search_query or selected_sprint_id %}
       <div class="col-auto">
-        <a href="{% url 'sprint_board_page' %}" class="btn btn-outline-secondary">Show All</a>
+        <a href="{% url 'sprint_board_page' %}" class="btn btn-outline-secondary">Clear Filters</a>
+      </div>
+      {% endif %}
+      {% if search_query %}
+      <div class="col-12">
+        <div class="text-muted small">
+          Showing sprint board matches for "{{ search_query }}"{% if selected_sprint_id %} in the selected sprint{% endif %}.
+        </div>
       </div>
       {% endif %}
     </form>
   </div>
 </div>
-{% endif %}
 
 {% if is_manager %}
 <div class="card shadow-sm mb-4">
-  <div class="card-body">
-    <h4 class="card-title">Create Sprint</h4>
-    <form method="post">
-      {% csrf_token %}
-      <input type="hidden" name="action" value="create_sprint">
-      <input type="hidden" name="selected_sprint" value="{{ selected_sprint_id }}">
-      {% if create_form.non_field_errors %}
-      <div class="alert alert-danger">{{ create_form.non_field_errors }}</div>
-      {% endif %}
-      <div class="row g-3">
-        <div class="col-md-5">
-          <label class="form-label" for="{{ create_form.name.id_for_label }}">Sprint Name</label>
-          {{ create_form.name }}
-          {{ create_form.name.errors }}
+  <div class="card-body d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-3">
+    <div>
+      <h4 class="card-title mb-1">Create Sprint</h4>
+      <p class="text-muted mb-0">Keep sprint setup out of the way until the team is ready to plan a new iteration.</p>
+    </div>
+    <button
+      class="btn btn-primary"
+      type="button"
+      data-bs-toggle="collapse"
+      data-bs-target="#sprint-create-panel"
+      aria-expanded="{% if create_form.errors %}true{% else %}false{% endif %}"
+      aria-controls="sprint-create-panel"
+    >
+      Create Sprint
+    </button>
+  </div>
+  <div id="sprint-create-panel" class="collapse{% if create_form.errors %} show{% endif %}">
+    <div class="card-body border-top">
+      <form method="post">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="create_sprint">
+        <input type="hidden" name="selected_sprint" value="{{ selected_sprint_id }}">
+        {% if create_form.non_field_errors %}
+        <div class="alert alert-danger">{{ create_form.non_field_errors }}</div>
+        {% endif %}
+        <div class="row g-3">
+          <div class="col-md-5">
+            <label class="form-label" for="{{ create_form.name.id_for_label }}">Sprint Name</label>
+            {{ create_form.name }}
+            {{ create_form.name.errors }}
+          </div>
+          <div class="col-md-3">
+            <label class="form-label" for="{{ create_form.start_date.id_for_label }}">Start Date</label>
+            {{ create_form.start_date }}
+            {{ create_form.start_date.errors }}
+          </div>
+          <div class="col-md-3">
+            <label class="form-label" for="{{ create_form.end_date.id_for_label }}">End Date</label>
+            {{ create_form.end_date }}
+            {{ create_form.end_date.errors }}
+          </div>
+          <div class="col-md-3">
+            <label class="form-label" for="{{ create_form.status.id_for_label }}">Sprint State</label>
+            {{ create_form.status }}
+            {{ create_form.status.errors }}
+          </div>
         </div>
-        <div class="col-md-3">
-          <label class="form-label" for="{{ create_form.start_date.id_for_label }}">Start Date</label>
-          {{ create_form.start_date }}
-          {{ create_form.start_date.errors }}
-        </div>
-        <div class="col-md-3">
-          <label class="form-label" for="{{ create_form.end_date.id_for_label }}">End Date</label>
-          {{ create_form.end_date }}
-          {{ create_form.end_date.errors }}
-        </div>
-        <div class="col-md-3">
-          <label class="form-label" for="{{ create_form.status.id_for_label }}">Sprint State</label>
-          {{ create_form.status }}
-          {{ create_form.status.errors }}
-        </div>
-      </div>
-      <button type="submit" class="btn btn-primary mt-3">Create Sprint</button>
-    </form>
+        <button type="submit" class="btn btn-primary mt-3">Create Sprint</button>
+      </form>
+    </div>
   </div>
 </div>
 {% endif %}
@@ -224,7 +252,11 @@
 </div>
 {% else %}
 <div class="alert alert-light border">
+  {% if search_query and filter_sprints %}
+  No sprint tickets matched "{{ search_query }}".
+  {% else %}
   No sprints exist yet. Create one to start planning work from the backlog.
+  {% endif %}
 </div>
 {% endif %}
 

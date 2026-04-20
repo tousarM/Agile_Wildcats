@@ -914,7 +914,7 @@ class TaskAndBacklogTests(TestCase):
         self.assertContains(response, "Sprint Beta")
         self.assertContains(response, "Beta ticket")
         self.assertNotContains(response, "Alpha ticket")
-        self.assertContains(response, "Show All")
+        self.assertContains(response, "Clear Filters")
 
     def test_board_tab_can_be_filtered_to_single_sprint(self):
         first_sprint = self._create_sprint(name="Board Sprint Alpha")
@@ -955,7 +955,66 @@ class TaskAndBacklogTests(TestCase):
         self.assertNotContains(response, "Alpha board ticket")
         self.assertIn("Beta board ticket", filtered_titles)
         self.assertNotIn("Alpha board ticket", filtered_titles)
-        self.assertContains(response, "Show All")
+        self.assertContains(response, "Clear Filters")
+
+    def test_backlog_page_can_search_items(self):
+        self._create_task(
+            title="Needle backlog item",
+            description="Searchable backlog work",
+            assigned_to=self.developer,
+        )
+        self._create_task(
+            title="Haystack backlog item",
+            description="Unrelated backlog work",
+            assigned_to=self.general_user,
+        )
+
+        self.client.login(username="manager1", password="pass123")
+        response = self.client.get(
+            reverse("backlog_page"),
+            {"q": "Needle"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Search Backlog")
+        self.assertContains(response, "Needle backlog item")
+        self.assertNotContains(response, "Haystack backlog item")
+        self.assertEqual(response.context["search_query"], "Needle")
+        self.assertEqual(response.context["filtered_item_count"], 1)
+
+    def test_board_page_can_search_tasks_without_any_sprints(self):
+        self._create_task(
+            title="Needle board task",
+            description="Find me on the board",
+            assigned_to=self.developer,
+            status="todo",
+        )
+        self._create_task(
+            title="Haystack board task",
+            description="Leave me out of the results",
+            assigned_to=self.general_user,
+            status="in_progress",
+        )
+
+        self.client.login(username="manager1", password="pass123")
+        response = self.client.get(
+            reverse("boards"),
+            {"q": "Needle"},
+        )
+
+        filtered_titles = [
+            task.title
+            for _, _, column_tasks in response.context["board_columns"]
+            for task in column_tasks
+        ]
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Search Board")
+        self.assertContains(response, "Needle board task")
+        self.assertNotContains(response, "Haystack board task")
+        self.assertEqual(response.context["search_query"], "Needle")
+        self.assertIn("Needle board task", filtered_titles)
+        self.assertNotIn("Haystack board task", filtered_titles)
 
     def test_member_can_view_sprint_board_but_cannot_manage_sprints(self):
         sprint = self._create_sprint(name="Visible Sprint")

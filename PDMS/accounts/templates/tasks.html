@@ -19,14 +19,58 @@
   </div>
 </div>
 
-<form method="post" enctype="multipart/form-data" class="card card-body shadow-sm mb-4">
-  {% csrf_token %}
-  <input type="hidden" name="action" value="create_task">
-  {{ form.as_p }}
-  <button type="submit" class="btn btn-primary align-self-start">
-    {% if is_manager %}Create Task{% else %}Add Task{% endif %}
-  </button>
-</form>
+<div class="card shadow-sm mb-4">
+  <div class="card-body">
+    <form method="get" class="row g-3 align-items-end">
+      <div class="col-md-8 col-lg-6">
+        <label class="form-label" for="task-search">Search Tasks</label>
+        <input id="task-search" type="search" name="q" value="{{ search_query }}" class="form-control" placeholder="Search tickets, reviewers, sprint names, notes, or status">
+      </div>
+      <div class="col-auto">
+        <button type="submit" class="btn btn-outline-primary">Search</button>
+      </div>
+      {% if search_query %}
+      <div class="col-auto">
+        <a href="{% url 'task_page' %}" class="btn btn-outline-secondary">Clear</a>
+      </div>
+      <div class="col-12">
+        <div class="text-muted small">Showing task matches for "{{ search_query }}".</div>
+      </div>
+      {% endif %}
+    </form>
+  </div>
+</div>
+
+<div class="card shadow-sm mb-4">
+  <div class="card-body d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-3">
+    <div>
+      <h4 class="card-title mb-1">{% if is_manager %}Create Task{% else %}Add Task{% endif %}</h4>
+      <p class="text-muted mb-0">Open the task form only when you are ready to capture a new work item.</p>
+    </div>
+    <button
+      class="btn btn-primary"
+      type="button"
+      data-bs-toggle="collapse"
+      data-bs-target="#task-create-panel"
+      aria-expanded="{% if form.errors %}true{% else %}false{% endif %}"
+      aria-controls="task-create-panel"
+    >
+      {% if is_manager %}Create Task{% else %}Add Task{% endif %}
+    </button>
+  </div>
+  <div id="task-create-panel" class="collapse{% if form.errors %} show{% endif %}">
+    <div class="card-body border-top">
+      <form method="post" enctype="multipart/form-data">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="create_task">
+        {{ form.as_p }}
+        <button type="submit" class="btn btn-primary align-self-start">
+          {% if is_manager %}Create Task{% else %}Add Task{% endif %}
+        </button>
+      </form>
+    </div>
+  </div>
+</div>
 
 <ul class="list-unstyled">
   {% for task in tasks %}
@@ -210,7 +254,7 @@
     </div>
   </li>
   {% empty %}
-  <li>No tasks yet.</li>
+  <li>{% if search_query %}No tasks matched "{{ search_query }}".{% else %}No tasks yet.{% endif %}</li>
   {% endfor %}
 </ul>
 

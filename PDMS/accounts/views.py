@@ -5,7 +5,7 @@ from django.contrib.auth.models import User
 from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied
-from django.db.models import Case, IntegerField, Value, When
+from django.db.models import Case, IntegerField, Q, Value, When
 from django.utils import timezone
 from .forms import (
     BacklogGroomForm,
@@ -68,6 +68,40 @@ def _team_tasks(team):
         .select_related('sprint')
         .prefetch_related('updates__author')
     )
+
+
+def _task_search_queryset(queryset, search_query):
+    search_query = (search_query or "").strip()
+    if not search_query:
+        return queryset, ""
+
+    normalized_choice_query = "_".join(search_query.lower().split())
+    choice_filters = Q(item_type__icontains=search_query)
+    choice_filters |= Q(priority__icontains=search_query)
+    choice_filters |= Q(backlog_state__icontains=search_query)
+    choice_filters |= Q(status__icontains=search_query)
+    choice_filters |= Q(review_state__icontains=search_query)
+
+    if normalized_choice_query and normalized_choice_query != search_query.lower():
+        choice_filters |= Q(item_type__icontains=normalized_choice_query)
+        choice_filters |= Q(priority__icontains=normalized_choice_query)
+        choice_filters |= Q(backlog_state__icontains=normalized_choice_query)
+        choice_filters |= Q(status__icontains=normalized_choice_query)
+        choice_filters |= Q(review_state__icontains=normalized_choice_query)
+
+    filtered_queryset = queryset.filter(
+        Q(title__icontains=search_query)
+        | Q(description__icontains=search_query)
+        | Q(acceptance_criteria__icontains=search_query)
+        | Q(assigned_to__username__icontains=search_query)
+        | Q(assigned_to__profile__name__icontains=search_query)
+        | Q(reviewer__username__icontains=search_query)
+        | Q(reviewer__profile__name__icontains=search_query)
+        | Q(sprint__name__icontains=search_query)
+        | choice_filters
+    ).distinct()
+
+    return filtered_queryset, search_query
 
 
 def _ordered_tasks(queryset):
@@ -443,6 +477,7 @@ def boards(request):
     else:
         selected_sprint_id = ''
 
+    tasks, search_query = _task_search_queryset(tasks, request.GET.get('q', ''))
     tasks = tasks.order_by('due_date', 'title')
 
     board_columns = [
@@ -466,6 +501,7 @@ def boards(request):
         'filter_sprints': filter_sprints,
         'selected_sprint_id': selected_sprint_id,
         'selected_sprint': selected_sprint,
+        'search_query': search_query,
     })
 
 @login_required(login_url='login')
@@ -623,6 +659,7 @@ def task_page(request):
     tasks = _team_tasks(team)
     if not is_manager:
         tasks = tasks.filter(assigned_to=request.user)
+    tasks, search_query = _task_search_queryset(tasks, request.GET.get('q', ''))
 
     # Finally render the page
     return render(request, 'tasks.html', {
@@ -632,6 +669,7 @@ def task_page(request):
         'assignable_users': assignable_users,
         'status_choices': Task.STATUS_CHOICES,
         'current_user_id': request.user.id,
+        'search_query': search_query,
     })
 
 
@@ -647,6 +685,7 @@ def backlog_page(request):
     team = profile.team
     assignable_users = _assignable_users_for_team(team)
     available_sprints = _available_sprints_for_team(team)
+    search_query = request.GET.get('q', '').strip()
     create_form = BacklogItemForm(
         assignable_users=assignable_users,
         available_sprints=available_sprints,
@@ -721,7 +760,8 @@ def backlog_page(request):
             task.delete()
             return redirect('backlog_page')
 
-    backlog_items = list(_backlog_queryset(team))
+    filtered_backlog_queryset, search_query = _task_search_queryset(_backlog_queryset(team), search_query)
+    backlog_items = list(filtered_backlog_queryset)
     backlog_sections = []
 
     for state_value, state_label in Task.BACKLOG_STATE_CHOICES:
@@ -753,6 +793,8 @@ def backlog_page(request):
             'backlog_sections': backlog_sections,
             'is_manager': is_manager,
             'sprint_count': Sprint.objects.filter(team=team).count(),
+            'search_query': search_query,
+            'filtered_item_count': len(backlog_items),
         },
     )
 
@@ -769,6 +811,7 @@ def sprint_board_page(request):
     filter_sprints = list(_sprint_queryset(team))
     selected_sprint_id = request.GET.get('sprint', '').strip()
     selected_sprint = next((sprint for sprint in filter_sprints if str(sprint.id) == selected_sprint_id), None)
+    search_query = request.GET.get('q', '').strip()
     if selected_sprint is None:
         selected_sprint_id = ''
 
@@ -826,13 +869,17 @@ def sprint_board_page(request):
             )
 
     sprints = [selected_sprint] if selected_sprint else filter_sprints
+    matching_sprints = []
     for sprint in sprints:
-        sprint.board_tasks = list(_ordered_tasks(_team_tasks(team).filter(sprint=sprint)))
+        sprint_tasks, _ = _task_search_queryset(_ordered_tasks(_team_tasks(team).filter(sprint=sprint)), search_query)
+        sprint.board_tasks = list(sprint_tasks)
         if is_manager:
             if invalid_status_form is not None and sprint.id == invalid_status_sprint_id:
                 sprint.status_form = invalid_status_form
             else:
                 sprint.status_form = SprintStatusForm(instance=sprint)
+        if sprint.board_tasks or not search_query:
+            matching_sprints.append(sprint)
 
     return render(
         request,
@@ -840,10 +887,11 @@ def sprint_board_page(request):
         {
             'create_form': create_form,
             'is_manager': is_manager,
-            'sprints': sprints,
+            'sprints': matching_sprints,
             'filter_sprints': filter_sprints,
             'selected_sprint_id': selected_sprint_id,
             'backlog_count': Task.objects.filter(team=team, sprint__isnull=True).count(),
+            'search_query': search_query,
         },
     )
 
