@@ -6,7 +6,7 @@
 <h2>{{ profile.name|default:profile.user.username }}'s Dashboard</h2>
 <p><strong>Username:</strong> {{ profile.user.username }}</p>
 <p><strong>Email:</strong> {{ profile.user.email }}</p>
-<p><strong>Role:</strong> {{ profile.role }}</p>
+<p><strong>Role:</strong> {{ profile.get_role_display }}</p>
 <p><strong>Team:</strong> {{ profile.team|default:"No team yet" }}</p>
 
 <hr>

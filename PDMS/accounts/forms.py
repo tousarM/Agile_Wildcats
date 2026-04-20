@@ -181,8 +181,10 @@ class SprintForm(forms.ModelForm):
 class SprintStatusForm(forms.ModelForm):
     class Meta:
         model = Sprint
-        fields = ["status"]
+        fields = ["start_date", "end_date", "status"]
         widgets = {
+            "start_date": forms.DateInput(attrs={"class": "form-control form-control-sm", "type": "date"}),
+            "end_date": forms.DateInput(attrs={"class": "form-control form-control-sm", "type": "date"}),
             "status": forms.Select(attrs={"class": "form-select form-select-sm"}),
         }
 

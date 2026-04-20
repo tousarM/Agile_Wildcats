@@ -7,6 +7,38 @@
   .sprint-board-grid .sprint-column {
     width: 100%;
   }
+  .sprint-manager-tools {
+    width: 100%;
+  }
+  .sprint-manager-form {
+    width: 100%;
+    display: grid;
+    gap: 0.75rem;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    align-items: end;
+  }
+  .sprint-manager-form .sprint-action-cell {
+    min-width: 140px;
+  }
+  .sprint-delete-form {
+    width: 100%;
+  }
+  .sprint-delete-form .btn {
+    width: 100%;
+  }
+  @media (min-width: 1200px) {
+    .sprint-manager-tools {
+      max-width: 760px;
+      margin-left: auto;
+    }
+    .sprint-delete-form {
+      width: auto;
+    }
+    .sprint-delete-form .btn {
+      width: auto;
+      min-width: 140px;
+    }
+  }
   @media (min-width: 1500px) {
     .sprint-board-grid .sprint-column {
       width: 50%;
@@ -150,20 +182,32 @@
             {% endif %}
           </div>
           {% if is_manager %}
-          <div class="d-flex flex-column flex-xl-row gap-2 w-100 justify-content-lg-end">
-            <form method="post" class="d-flex flex-column flex-md-row gap-2 align-items-md-end">
+          <div class="sprint-manager-tools d-flex flex-column gap-2">
+            <form method="post" class="sprint-manager-form">
               {% csrf_token %}
               <input type="hidden" name="action" value="update_sprint_status">
               <input type="hidden" name="sprint_id" value="{{ sprint.id }}">
               <input type="hidden" name="selected_sprint" value="{{ selected_sprint_id }}">
-              <div class="flex-grow-1">
+              <div>
+                <label class="form-label small mb-1" for="{{ sprint.status_form.start_date.id_for_label }}">Start Date</label>
+                {{ sprint.status_form.start_date }}
+                {{ sprint.status_form.start_date.errors }}
+              </div>
+              <div>
+                <label class="form-label small mb-1" for="{{ sprint.status_form.end_date.id_for_label }}">End Date</label>
+                {{ sprint.status_form.end_date }}
+                {{ sprint.status_form.end_date.errors }}
+              </div>
+              <div>
                 <label class="form-label small mb-1" for="{{ sprint.status_form.status.id_for_label }}">Sprint State</label>
                 {{ sprint.status_form.status }}
                 {{ sprint.status_form.status.errors }}
               </div>
-              <button type="submit" class="btn btn-sm btn-outline-primary">Save State</button>
+              <div class="sprint-action-cell">
+                <button type="submit" class="btn btn-sm btn-outline-primary w-100">Save Sprint</button>
+              </div>
             </form>
-            <form method="post" class="align-self-start" onsubmit="return confirm('Delete this sprint? Tickets in it will be moved back to the backlog.');">
+            <form method="post" class="sprint-delete-form" onsubmit="return confirm('Delete this sprint? Tickets in it will be moved back to the backlog.');">
               {% csrf_token %}
               <input type="hidden" name="action" value="delete_sprint">
               <input type="hidden" name="sprint_id" value="{{ sprint.id }}">

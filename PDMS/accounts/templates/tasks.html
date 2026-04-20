@@ -142,6 +142,8 @@
         <option value="{{ u.id }}" {% if task.assigned_to_id == u.id %}selected{% endif %}>{{ u.username }}</option>
         {% endfor %}
       </select>
+      <label for="due_date_{{ task.id }}">Due Date:</label>
+      <input id="due_date_{{ task.id }}" type="date" name="due_date" value="{{ task.due_date_input_value }}" class="form-control mb-2">
       {% endif %}
 
       <label for="status_{{ task.id }}">Update Status:</label>
@@ -204,8 +206,18 @@
     <div class="mt-3">
       {% with updates=task.updates.all %}
         {% if updates %}
-        <strong>Discussion &amp; Activity</strong>
-        <div class="mt-2">
+        <button
+          class="btn btn-sm btn-outline-secondary collapsed"
+          type="button"
+          data-bs-toggle="collapse"
+          data-bs-target="#task-activity-{{ task.id }}"
+          aria-expanded="false"
+          aria-controls="task-activity-{{ task.id }}"
+        >
+          Discussion &amp; Activity
+          <span class="badge text-bg-light ms-1">{{ updates|length }}</span>
+        </button>
+        <div id="task-activity-{{ task.id }}" class="collapse mt-3">
           {% for update in updates %}
           <div class="mb-3">
             <div>{{ update.created_at|date:"M d, Y g:i A" }} - Updates by {{ update.actor_name }}</div>
@@ -248,7 +260,7 @@
           {% endfor %}
         </div>
         {% else %}
-        <span>No discussion or activity yet.</span>
+        <span class="text-muted">No discussion or activity yet.</span>
         {% endif %}
       {% endwith %}
     </div>

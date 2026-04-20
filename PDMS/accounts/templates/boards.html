@@ -204,6 +204,8 @@
             <option value="{{ u.id }}" {% if task.assigned_to_id == u.id %}selected{% endif %}>{{ u.username }}</option>
             {% endfor %}
           </select>
+          <label for="due_date_{{ task.id }}">Due Date:</label>
+          <input id="due_date_{{ task.id }}" type="date" name="due_date" value="{{ task.due_date_input_value }}" class="form-control mb-2">
           {% endif %}
 
           <label for="status_{{ task.id }}">Update Status:</label>

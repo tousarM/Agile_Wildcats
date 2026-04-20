@@ -7,6 +7,7 @@ from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied
 from django.db.models import Case, IntegerField, Q, Value, When
 from django.utils import timezone
+from django.utils.dateparse import parse_date
 from .forms import (
     BacklogGroomForm,
     BacklogItemForm,
@@ -190,6 +191,10 @@ def _request_review(task, reviewer, requester):
     task.reviewed_at = None
 
 
+def _format_due_date_value(due_date):
+    return due_date.isoformat() if due_date else "No due date"
+
+
 def _apply_task_update(request, task, *, is_manager, assignable_users, allow_assignment):
     valid_statuses = {choice[0] for choice in Task.STATUS_CHOICES}
     new_status = request.POST.get('status', task.status)
@@ -203,16 +208,34 @@ def _apply_task_update(request, task, *, is_manager, assignable_users, allow_ass
     previous_status = task.status
     previous_review_state = task.review_state
     previous_reviewer = task.reviewer
+    previous_due_date = task.due_date
     note_parts = []
 
     if allow_assignment and is_manager:
         assigned_to_id = request.POST.get('assigned_to')
         task.assigned_to = assignable_users.filter(pk=assigned_to_id).first() if assigned_to_id else None
 
+    if is_manager and 'due_date' in request.POST:
+        due_date_input = request.POST.get('due_date', '').strip()
+        if due_date_input:
+            parsed_due_date = parse_date(due_date_input)
+            if parsed_due_date is None:
+                return _task_action_error(request, "Enter a valid due date.")
+            task.due_date = parsed_due_date
+        else:
+            task.due_date = None
+
     assignee_changed = previous_assignee != task.assigned_to
+    due_date_changed = previous_due_date != task.due_date
     if assignee_changed and previous_review_state != 'not_requested':
         _clear_review_state(task)
         note_parts.append("Review workflow reset because ownership changed.")
+
+    if due_date_changed:
+        note_parts.append(
+            "Due date changed from "
+            f"{_format_due_date_value(previous_due_date)} to {_format_due_date_value(task.due_date)}."
+        )
 
     reviewer_id = request.POST.get('reviewer', '').strip()
     selected_reviewer = assignable_users.filter(pk=reviewer_id).first() if reviewer_id else None
@@ -280,7 +303,7 @@ def _apply_task_update(request, task, *, is_manager, assignable_users, allow_ass
     assignee_changed = previous_assignee != task.assigned_to
     combined_note = " ".join(part for part in [*note_parts, note] if part)
 
-    if assignee_changed or status_changed or combined_note or attachment:
+    if assignee_changed or due_date_changed or status_changed or combined_note or attachment:
         TaskUpdate.objects.create(
             task=task,
             author=request.user,
@@ -837,7 +860,12 @@ def sprint_board_page(request):
         elif action == 'update_sprint_status':
             sprint = get_object_or_404(Sprint, pk=request.POST.get('sprint_id'), team=team)
             invalid_status_sprint_id = sprint.id
-            invalid_status_form = SprintStatusForm(request.POST, instance=sprint)
+            sprint_update_data = request.POST.copy()
+            if not sprint_update_data.get('start_date'):
+                sprint_update_data['start_date'] = sprint.start_date.isoformat()
+            if not sprint_update_data.get('end_date'):
+                sprint_update_data['end_date'] = sprint.end_date.isoformat()
+            invalid_status_form = SprintStatusForm(sprint_update_data, instance=sprint)
             if invalid_status_form.is_valid():
                 invalid_status_form.save()
                 return _redirect_to_sprint_board(
