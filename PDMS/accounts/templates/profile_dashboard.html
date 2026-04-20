@@ -6,22 +6,43 @@
 <h2>{{ profile.name|default:profile.user.username }}'s Dashboard</h2>
 <p><strong>Username:</strong> {{ profile.user.username }}</p>
 <p><strong>Email:</strong> {{ profile.user.email }}</p>
-<p><strong>Role:</strong> {{ profile.role }}</p>
+<p><strong>Role:</strong> {{ profile.get_role_display }}</p>
 <p><strong>Team:</strong> {{ profile.team|default:"No team yet" }}</p>
 
 <hr>
-<h3>Change Settings</h3>
-<form method="post" class="card card-body shadow-sm mb-4">
-  {% csrf_token %}
-  <div class="mb-3">
-    <label class="form-label" for="{{ settings_form.email.id_for_label }}">Email</label>
-    {{ settings_form.email }}
-    {% if settings_form.email.errors %}
-    <div class="text-danger small">{{ settings_form.email.errors }}</div>
-    {% endif %}
+<div class="card shadow-sm mb-4">
+  <div class="card-body d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-3">
+    <div>
+      <h3 class="h5 mb-1">Change Settings</h3>
+      <p class="text-muted mb-0">Keep profile updates tucked away until you need them.</p>
+    </div>
+    <button
+      class="btn btn-outline-primary"
+      type="button"
+      data-bs-toggle="collapse"
+      data-bs-target="#dashboard-settings-panel"
+      aria-expanded="{% if settings_form.errors %}true{% else %}false{% endif %}"
+      aria-controls="dashboard-settings-panel"
+    >
+      Edit Settings
+    </button>
   </div>
-  <button type="submit" class="btn btn-primary align-self-start">Save Settings</button>
-</form>
+  <div id="dashboard-settings-panel" class="collapse{% if settings_form.errors %} show{% endif %}">
+    <div class="card-body border-top">
+      <form method="post">
+        {% csrf_token %}
+        <div class="mb-3">
+          <label class="form-label" for="{{ settings_form.email.id_for_label }}">Email</label>
+          {{ settings_form.email }}
+          {% if settings_form.email.errors %}
+          <div class="text-danger small">{{ settings_form.email.errors }}</div>
+          {% endif %}
+        </div>
+        <button type="submit" class="btn btn-primary align-self-start">Save Settings</button>
+      </form>
+    </div>
+  </div>
+</div>
 
 <hr>
 <h3>Review Inbox</h3>

@@ -59,10 +59,14 @@
   </select>
 </div>
 
-{% if filter_sprints %}
 <div class="card shadow-sm mb-4">
   <div class="card-body">
     <form method="get" class="row g-3 align-items-end">
+      <div class="col-sm-8 col-md-6 col-lg-4">
+        <label class="form-label" for="board-search">Search Board</label>
+        <input id="board-search" type="search" name="q" value="{{ search_query }}" class="form-control" placeholder="Search tickets, people, sprint names, or status">
+      </div>
+      {% if filter_sprints %}
       <div class="col-sm-8 col-md-6 col-lg-4">
         <label class="form-label" for="board-sprint-filter">View by Sprint</label>
         <select id="board-sprint-filter" name="sprint" class="form-select">
@@ -74,18 +78,25 @@
           {% endfor %}
         </select>
       </div>
+      {% endif %}
       <div class="col-auto">
         <button type="submit" class="btn btn-outline-primary">Apply Filter</button>
       </div>
-      {% if selected_sprint_id %}
+      {% if search_query or selected_sprint_id %}
       <div class="col-auto">
-        <a href="{% url 'boards' %}" class="btn btn-outline-secondary">Show All</a>
+        <a href="{% url 'boards' %}" class="btn btn-outline-secondary">Clear Filters</a>
+      </div>
+      {% endif %}
+      {% if search_query %}
+      <div class="col-12">
+        <div class="text-muted small">
+          Showing board matches for "{{ search_query }}"{% if selected_sprint %} in {{ selected_sprint.name }}{% endif %}.
+        </div>
       </div>
       {% endif %}
     </form>
   </div>
 </div>
-{% endif %}
 
 <div class="board-wrap">
   {% for status_key, status_label, col_tasks in board_columns %}
@@ -193,6 +204,8 @@
             <option value="{{ u.id }}" {% if task.assigned_to_id == u.id %}selected{% endif %}>{{ u.username }}</option>
             {% endfor %}
           </select>
+          <label for="due_date_{{ task.id }}">Due Date:</label>
+          <input id="due_date_{{ task.id }}" type="date" name="due_date" value="{{ task.due_date_input_value }}" class="form-control mb-2">
           {% endif %}
 
           <label for="status_{{ task.id }}">Update Status:</label>

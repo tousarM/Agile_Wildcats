@@ -204,6 +204,84 @@ class TaskAndBacklogTests(TestCase):
         self.assertEqual(update.current_assignee, "member1")
         self.assertEqual(update.note, "Picked up and started implementation.")
 
+    def test_manager_can_update_task_due_date_from_combined_task_form(self):
+        task = self._create_task(
+            title="Adjust due date",
+            description="Manager needs to reschedule this task",
+            assigned_to=self.developer,
+            due_date=date(2026, 4, 20),
+        )
+        self.client.login(username="manager1", password="pass123")
+
+        response = self.client.post(
+            reverse("task_page"),
+            {
+                "action": "update_task",
+                "task_id": task.id,
+                "assigned_to": self.developer.id,
+                "due_date": "2026-04-27",
+                "status": "todo",
+                "note": "Pushed back after planning review.",
+                "next": "task_page",
+            },
+        )
+
+        self.assertRedirects(response, reverse("task_page"))
+        task.refresh_from_db()
+        self.assertEqual(task.due_date, date(2026, 4, 27))
+
+        update = TaskUpdate.objects.filter(task=task).latest("created_at")
+        self.assertIn("Due date changed from 2026-04-20 to 2026-04-27.", update.note)
+        self.assertIn("Pushed back after planning review.", update.note)
+
+    def test_task_page_prefills_due_date_input_for_managers(self):
+        task = self._create_task(
+            title="Show existing due date",
+            assigned_to=self.developer,
+            due_date=date(2026, 4, 18),
+        )
+        self.client.login(username="manager1", password="pass123")
+
+        response = self.client.get(reverse("task_page"))
+
+        self.assertContains(
+            response,
+            f'id="due_date_{task.id}" type="date" name="due_date" value="2026-04-18"',
+            html=False,
+        )
+
+    def test_task_page_renders_collapsible_activity_for_tasks_with_updates(self):
+        task = self._create_task(
+            title="Collapsible activity",
+            assigned_to=self.general_user,
+        )
+
+        self.client.login(username="member1", password="pass123")
+        self.client.post(
+            reverse("task_page"),
+            {
+                "action": "update_progress",
+                "task_id": task.id,
+                "status": "in_progress",
+                "note": "Logged the first visible update.",
+            },
+        )
+
+        response = self.client.get(reverse("task_page"))
+
+        self.assertContains(response, 'data-bs-target="#task-activity-{}'.format(task.id), html=False)
+        self.assertContains(response, 'id="task-activity-{}" class="collapse mt-3"'.format(task.id), html=False)
+        self.assertContains(response, "Discussion &amp; Activity")
+        self.assertContains(response, "Logged the first visible update.")
+
+    def test_dashboard_uses_role_display_label(self):
+        self.client.login(username="manager1", password="pass123")
+
+        response = self.client.get(reverse("profile_dashboard"))
+
+        self.assertContains(response, "<strong>Role:</strong> Manager", html=False)
+        self.assertNotContains(response, "<strong>Role:</strong> manager", html=False)
+
     def test_manager_can_delete_task_item(self):
         task = self._create_task(
             title="Delete me from tasks",
@@ -787,6 +865,32 @@ class TaskAndBacklogTests(TestCase):
         sprint.refresh_from_db()
         self.assertEqual(sprint.status, "active")
 
+    def test_manager_can_update_sprint_dates(self):
+        sprint = self._create_sprint(
+            name="Schedule Sprint",
+            start_date="2026-04-07",
+            end_date="2026-04-18",
+            status="planned",
+        )
+        self.client.login(username="manager1", password="pass123")
+
+        response = self.client.post(
+            reverse("sprint_board_page"),
+            {
+                "action": "update_sprint_status",
+                "sprint_id": sprint.id,
+                "start_date": "2026-04-10",
+                "end_date": "2026-04-24",
+                "status": "active",
+            },
+        )
+
+        self.assertRedirects(response, reverse("sprint_board_page"))
+        sprint.refresh_from_db()
+        self.assertEqual(sprint.start_date, date(2026, 4, 10))
+        self.assertEqual(sprint.end_date, date(2026, 4, 24))
+        self.assertEqual(sprint.status, "active")
+
     def test_manager_can_delete_sprint_and_return_tickets_to_backlog(self):
         sprint = self._create_sprint(name="Disposable Sprint", status="active")
         task = self._create_task(
@@ -914,7 +1018,7 @@ class TaskAndBacklogTests(TestCase):
         self.assertContains(response, "Sprint Beta")
         self.assertContains(response, "Beta ticket")
         self.assertNotContains(response, "Alpha ticket")
-        self.assertContains(response, "Show All")
+        self.assertContains(response, "Clear Filters")
 
     def test_board_tab_can_be_filtered_to_single_sprint(self):
         first_sprint = self._create_sprint(name="Board Sprint Alpha")
@@ -955,7 +1059,66 @@ class TaskAndBacklogTests(TestCase):
         self.assertNotContains(response, "Alpha board ticket")
         self.assertIn("Beta board ticket", filtered_titles)
         self.assertNotIn("Alpha board ticket", filtered_titles)
-        self.assertContains(response, "Show All")
+        self.assertContains(response, "Clear Filters")
+
+    def test_backlog_page_can_search_items(self):
+        self._create_task(
+            title="Needle backlog item",
+            description="Searchable backlog work",
+            assigned_to=self.developer,
+        )
+        self._create_task(
+            title="Haystack backlog item",
+            description="Unrelated backlog work",
+            assigned_to=self.general_user,
+        )
+
+        self.client.login(username="manager1", password="pass123")
+        response = self.client.get(
+            reverse("backlog_page"),
+            {"q": "Needle"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Search Backlog")
+        self.assertContains(response, "Needle backlog item")
+        self.assertNotContains(response, "Haystack backlog item")
+        self.assertEqual(response.context["search_query"], "Needle")
+        self.assertEqual(response.context["filtered_item_count"], 1)
+
+    def test_board_page_can_search_tasks_without_any_sprints(self):
+        self._create_task(
+            title="Needle board task",
+            description="Find me on the board",
+            assigned_to=self.developer,
+            status="todo",
+        )
+        self._create_task(
+            title="Haystack board task",
+            description="Leave me out of the results",
+            assigned_to=self.general_user,
+            status="in_progress",
+        )
+
+        self.client.login(username="manager1", password="pass123")
+        response = self.client.get(
+            reverse("boards"),
+            {"q": "Needle"},
+        )
+
+        filtered_titles = [
+            task.title
+            for _, _, column_tasks in response.context["board_columns"]
+            for task in column_tasks
+        ]
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Search Board")
+        self.assertContains(response, "Needle board task")
+        self.assertNotContains(response, "Haystack board task")
+        self.assertEqual(response.context["search_query"], "Needle")
+        self.assertIn("Needle board task", filtered_titles)
+        self.assertNotIn("Haystack board task", filtered_titles)
 
     def test_member_can_view_sprint_board_but_cannot_manage_sprints(self):
         sprint = self._create_sprint(name="Visible Sprint")

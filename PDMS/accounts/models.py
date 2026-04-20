@@ -223,6 +223,10 @@ class Task(models.Model):
     def review_status_label(self):
         return dict(self.REVIEW_STATE_CHOICES).get(self.review_state, "")
 
+    @property
+    def due_date_input_value(self):
+        return self.due_date.isoformat() if self.due_date else ""
+
 
 class TaskUpdate(models.Model):
     SYSTEM_CREATED_NOTE = "Task created."
