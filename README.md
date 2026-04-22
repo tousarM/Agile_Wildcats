@@ -1,7 +1,8 @@
 # Agile Wildcats — Product Development Management System (PDMS)
 
 Authors: Simon G. Dak, Osvaldo Estrell, Tousar Mohammed, Wesley Nguyen  
-Update Date : 2026-04-22  
+Date : 2026-03-13
+update Date: 2026-04-22
 
 This README provides onboarding instructions for the PDMS project. It reflects the exact structure: root → `PDMS/` project folder → `accounts/` app and nested `PDMS/` settings package. It explains the purpose of the system, setup steps, usage, and directory layout so team members and contributors can quickly get started.
 
@@ -21,16 +22,16 @@ The Product Development Management System (PDMS) is an Agile project management 
 - Role‑based access control:
   - Users must register and log in with assigned roles  
   - Roles determine permissions (e.g., Admin, Scrum Master, CI/CD Manager, Tester Manager)  
-  - Admins manage users and tasks, Scrum Master updates backlog/sprints, Testers Manager records outcomes  
+  - Admins manage users and tasks, Scrum Master updates backlog/sprints, Testers Manager record outcomes  
 
 ### Navigation Features
-- Home- Landing page showing project overview, sprint summary, and quick links.  
-- Backlog-Repository of all tasks and user stories not yet assigned to sprints.  
-- Sprints-Time‑boxed iterations where backlog items are committed for development and tracked.  
-- Tasks - Detailed view of individual tasks, including description, priority, assignee, and status.  
-- Board - Visual Kanban board for moving tasks across workflow stages (Backlog → Sprint → Test → Done).  
-- Team - Displays registered users, their roles, and permissions. Admins manage accounts here.  
-- Logout- Ends the current user session securely, enforcing role‑based access control.  
+- Home     Landing page showing project overview, sprint summary, and quick links.  
+- Backlog- Repository of all tasks and user stories not yet assigned to sprints.  
+- Sprints- Time‑boxed iterations where backlog items are committed for development and tracked.  
+- Tasks -  Detailed view of individual tasks, including description, priority, assignee, and status.  
+- Board -  Visual Kanban board for moving tasks across workflow stages (Backlog → Sprint → Test → Done).  
+- Team -   Displays registered users, their roles, and permissions. Admins manage accounts here.  
+- Logout   Ends the current user session securely, enforcing role‑based access control.  
 
 ---
 
@@ -61,7 +62,7 @@ The Product Development Management System (PDMS) is an Agile project management 
    python manage.py migrate
    ```
 
-5. Create a superuser
+5. Create a superuser 
    ```bash
    python manage.py createsuperuser
    ```
@@ -70,7 +71,6 @@ The Product Development Management System (PDMS) is an Agile project management 
    ```bash
    python manage.py runserver
    ```
----
 
 ## Docker Setup
 
@@ -87,7 +87,7 @@ docker-compose up --build
 
 ## CI/CD Configuration
 
-The PDMS project uses **GitHub Actions** for continuous integration and deployment. The workflow file is located at:
+The PDMS project uses GitHub Actions for continuous integration and deployment. The workflow file is located at:
 
 ```
 .github/workflows/pdms-ci.yml
@@ -96,53 +96,19 @@ The PDMS project uses **GitHub Actions** for continuous integration and deployme
 ### Workflow Triggers
 - Pushes to `main`
 - Pull requests targeting `main`
-- Release tags :V1.0
+- Release tags :v1.0`)
 - Weekly scheduled CodeQL scan
 
 ### Pipeline Steps
-- Checkout Code
-  ```yaml
-  - uses: actions/checkout@v4
-  ```
-- Set Up Python
-  ```yaml
-  - uses: actions/setup-python@v5
-    with:
-      python-version: '3.14.2'
-  - run: pip install -r PDMS/requirements.txt
-  ```
+-  Checkout Code
+-  Set Up Python
 - CodeQL Security Analysis
-  ```yaml
-  - uses: github/codeql-action/init@v3
-    with:
-      languages: python
-      queries: security-extended,security-and-quality
-  - uses: github/codeql-action/analyze@v3
-  ```
 - Database Migrations & Tests
-  ```yaml
-  - run: python manage.py migrate --noinput
-  - run: python manage.py test
-  ```
 - Collect Static Files
-  ```yaml
-  - run: python manage.py collectstatic --noinput
-  ```
 - Docker Build & Push
-  ```yaml
-  - run: echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
-  - run: docker build -t agilewildcats/pdms:${{ github.sha }} .
-  - run: docker tag agilewildcats/pdms:${{ github.sha }} agilewildcats/pdms:latest
-  - run: docker push agilewildcats/pdms:${{ github.sha }}
-  - run: docker push agilewildcats/pdms:latest
-  ```
 - Deploy to Kubernetes (on release/tag)
-  ```yaml
-  - run: kubectl set image deployment/pdms-deployment pdms=agilewildcats/pdms:${{ github.sha }}
-  - run: kubectl rollout status deployment/pdms-deployment
-  ```
 
-## Secrets Required
+### Secrets Required
 - `DOCKER_USERNAME` → Docker Hub account  
 - `DOCKER_PASSWORD` → Docker Hub password or token  
 - `SECRET_KEY` → Django secret key  
@@ -174,11 +140,32 @@ MEDIA_URL=/media/
 
 ## Routes
 
-- Home → `http://127.0.0.1:8000/`  
-- Login → `http://127.0.0.1:8000/login/`  
-- Register → `http://127.0.0.1:8000/register/`  
-- Tasks → `http://127.0.0.1:8000/tasks/`  
-- Admin panel → `http://127.0.0.1:8000/admin/`  
+- Home-   `http://127.0.0.1:8000/`  
+- Backlog-`http://127.0.0.1:8000/backlog/`  
+- Sprints-`http://127.0.0.1:8000/sprints/`  
+- Tasks-  `http://127.0.0.1:8000/tasks/`  
+- Board-  `http://127.0.0.1:8000/board/`  
+- Team    `http://127.0.0.1:8000/team/`  
+- Logout- `http://127.0.0.1:8000/logout/`  
+
+---
+
+## Workflow Diagram
+
+```text
+Backlog  →  Sprint  →  Test  →  Done
+   |          |         |        |
+   |          |         |        └── Release
+   |          |         └── Failed → Back to Sprint
+   └── New tasks added continuously
+```
+
+This diagram shows how tasks flow through the PDMS system:  
+- Tasks start in Backlog.  
+- Selected items move into Sprint.  
+- Completed items go to Test.  
+- If tests fail, tasks return to Sprint for rework.  
+- If tests pass, tasks are marked Done and released.  
 
 ---
 
@@ -202,16 +189,16 @@ AGILE_WILDCATS-MAIN/
 │
 ├── PDMS/                  # Django project folder
 │   ├── accounts/          # Main app
-│   │   ├── admin.py        # Admin customizations
-│   │   ├── apps.py         # AppConfig (loads signals)
-│   │   ├── forms.py        # User forms (login, register)
-│   │   ├── models.py       # Profile, Task models
-│   │   ├── signals.py      # Auto-create Profile on User creation
-│   │   ├── urls.py         # App routes
-│   │   ├── views.py        # Business logic
-│   │   ├── tests.py        # Unit tests
-│   │   ├── migrations/     # Database migrations
-│   │   └── templates/      # App templates
+│   │   ├── admin.py
+│   │   ├── apps.py
+│   │   ├── forms.py
+│   │   ├── models.py
+│   │   ├── signals.py
+│   │   ├── urls.py
+│   │   ├── views.py
+│   │   ├── tests.py
+│   │   ├── migrations/
+│   │   └── templates/
 │   │       ├── base.html
 │   │       ├── forgot_password.html
 │   │       ├── login.html
@@ -226,5 +213,3 @@ AGILE_WILDCATS-MAIN/
 │       ├── urls.py
 │       └── wsgi.py
 ```
-
----
