@@ -1,7 +1,7 @@
 # Agile Wildcats — Product Development Management System (PDMS)
 
 Authors: Simon G. Dak, Osvaldo Estrell, Tousar Mohammed, Wesley Nguyen  
-Date : 2026-03-13  
+Update Date : 2026-04-22  
 
 This README provides onboarding instructions for the PDMS project. It reflects the exact structure: root → `PDMS/` project folder → `accounts/` app and nested `PDMS/` settings package. It explains the purpose of the system, setup steps, usage, and directory layout so team members and contributors can quickly get started.
 
@@ -12,7 +12,6 @@ This README provides onboarding instructions for the PDMS project. It reflects t
 The Product Development Management System (PDMS) is an Agile project management tool designed to help teams manage product backlogs and sprint workflows.
 
 ### Key Features
-
 - Add new tasks to the Product Backlog  
 - Set and update task priority  
 - Move tasks between Backlog → Sprint → Ready for Test  
@@ -21,72 +20,61 @@ The Product Development Management System (PDMS) is an Agile project management 
   - Passed → marked complete and ready for release  
 - Role‑based access control:
   - Users must register and log in with assigned roles  
-  - Roles determine permissions (e.g., Admin, Scrum Master, CI/CD Manaager, Tester Manager etc )  
-  - Admins manage users and tasks, Scrum Master update backlog/sprints, Testers Manager record outcomes  
+  - Roles determine permissions (e.g., Admin, Scrum Master, CI/CD Manager, Tester Manager)  
+  - Admins manage users and tasks, Scrum Master updates backlog/sprints, Testers Manager records outcomes  
+
+### Navigation Features
+- Home- Landing page showing project overview, sprint summary, and quick links.  
+- Backlog-Repository of all tasks and user stories not yet assigned to sprints.  
+- Sprints-Time‑boxed iterations where backlog items are committed for development and tracked.  
+- Tasks - Detailed view of individual tasks, including description, priority, assignee, and status.  
+- Board - Visual Kanban board for moving tasks across workflow stages (Backlog → Sprint → Test → Done).  
+- Team - Displays registered users, their roles, and permissions. Admins manage accounts here.  
+- Logout- Ends the current user session securely, enforcing role‑based access control.  
 
 ---
 
 ## Local Setup
 
-### 1. Clone the repository
+1. Clone the repository
+   ```bash
+   git clone https://github.com/tousarM/Agile_Wildcats.git
+   cd Agile_Wildcats-main
+   ```
 
-```bash
-git clone https://github.com/tousarM/Agile_Wildcats.git
-cd Agile_Wildcats-main
-```
+2. Create a virtual environment
+   ```bash
+   python -m venv venv
+   ```
+   Activate it:
+   - Windows: `venv\Scripts\activate`  
+   - macOS/Linux: `source venv/bin/activate`
 
-### 2. Create a virtual environment
+3. Install dependencies
+   ```bash
+   python -m pip install -r requirements.txt
+   ```
 
-```bash
-python -m venv venv
-```
+4. Run migrations
+   ```bash
+   python manage.py makemigrations
+   python manage.py migrate
+   ```
 
-Activate it:
+5. Create a superuser
+   ```bash
+   python manage.py createsuperuser
+   ```
 
-- Windows
-
-  ```bash
-  venv\Scripts\activate
-
-  ```
-
-- macOS/Linux
-
-  ```bash
-  source venv/bin/activate
-  ```
-
-### 3. Install dependencies
-
-```bash
-python -m pip install -r requirements.txt
-```
-
-### 4. Run migrations
-
-```bash
-python manage.py makemigrations
-python manage.py migrate
-```
-
-### 5. Create a superuser
-
-```bash
-python manage.py createsuperuser
-```
-
-### 6. Start the server
-
-```bash
-python manage.py runserver
-```
-
+6. Start the server
+   ```bash
+   python manage.py runserver
+   ```
 ---
 
 ## Docker Setup
 
 For containerized development or deployment:
-
 ```bash
 docker-compose up --build
 ```
@@ -94,6 +82,71 @@ docker-compose up --build
 - The app runs on `http://127.0.0.1:8000/`  
 - SQLite database (`db.sqlite3`) is persisted via volume mapping  
 - Static files are collected automatically in the image  
+
+---
+
+## CI/CD Configuration
+
+The PDMS project uses **GitHub Actions** for continuous integration and deployment. The workflow file is located at:
+
+```
+.github/workflows/pdms-ci.yml
+```
+
+### Workflow Triggers
+- Pushes to `main`
+- Pull requests targeting `main`
+- Release tags (e.g., `v1.0.0`)
+- Weekly scheduled CodeQL scan
+
+### Pipeline Steps
+- Checkout Code
+  ```yaml
+  - uses: actions/checkout@v4
+  ```
+- Set Up Python
+  ```yaml
+  - uses: actions/setup-python@v5
+    with:
+      python-version: '3.14.2'
+  - run: pip install -r PDMS/requirements.txt
+  ```
+- CodeQL Security Analysis
+  ```yaml
+  - uses: github/codeql-action/init@v3
+    with:
+      languages: python
+      queries: security-extended,security-and-quality
+  - uses: github/codeql-action/analyze@v3
+  ```
+- Database Migrations & Tests
+  ```yaml
+  - run: python manage.py migrate --noinput
+  - run: python manage.py test
+  ```
+- Collect Static Files
+  ```yaml
+  - run: python manage.py collectstatic --noinput
+  ```
+- Docker Build & Push
+  ```yaml
+  - run: echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
+  - run: docker build -t agilewildcats/pdms:${{ github.sha }} .
+  - run: docker tag agilewildcats/pdms:${{ github.sha }} agilewildcats/pdms:latest
+  - run: docker push agilewildcats/pdms:${{ github.sha }}
+  - run: docker push agilewildcats/pdms:latest
+  ```
+- Deploy to Kubernetes (on release/tag)
+  ```yaml
+  - run: kubectl set image deployment/pdms-deployment pdms=agilewildcats/pdms:${{ github.sha }}
+  - run: kubectl rollout status deployment/pdms-deployment
+  ```
+
+## Secrets Required
+- `DOCKER_USERNAME` → Docker Hub account  
+- `DOCKER_PASSWORD` → Docker Hub password or token  
+- `SECRET_KEY` → Django secret key  
+- `DB_USER` / `DB_PASSWORD` → Database credentials (if using PostgreSQL/MySQL later)  
 
 ---
 
@@ -131,6 +184,7 @@ MEDIA_URL=/media/
 
 ## Project Structure
 
+```
 AGILE_WILDCATS-MAIN/
 │   manage.py
 │   requirements.txt
@@ -171,14 +225,6 @@ AGILE_WILDCATS-MAIN/
 │       ├── settings.py
 │       ├── urls.py
 │       └── wsgi.py
+```
 
 ---
-
-## Next Steps for the Team
-
-- Add unit tests for models, forms, and views  
-- Extend task management with sprint and backlog boards  
-- Improve UI/UX with responsive design  
-- Add API endpoints for integration with external tools  
-- Configure CI/CD pipeline with GitHub Actions  
-- Implement advanced role management (e.g., permissions per role)  
