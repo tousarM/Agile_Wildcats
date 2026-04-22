@@ -96,7 +96,7 @@ The PDMS project uses **GitHub Actions** for continuous integration and deployme
 ### Workflow Triggers
 - Pushes to `main`
 - Pull requests targeting `main`
-- Release tags (e.g., `v1.0.0`)
+- Release tags :V1.0
 - Weekly scheduled CodeQL scan
 
 ### Pipeline Steps
