@@ -191,10 +191,11 @@
 
         {% if is_manager or task.assigned_to_id == current_user_id %}
         <hr>
-        <form method="post" action="{% url 'task_page' %}" enctype="multipart/form-data">
+        <form method="post" action="{% url 'boards' %}" enctype="multipart/form-data">
           {% csrf_token %}
           <input type="hidden" name="action" value="update_task">
           <input type="hidden" name="task_id" value="{{ task.id }}">
+          <input type="hidden" name="selected_sprint" value="{{ selected_sprint_id }}">
 
           {% if is_manager %}
           <label for="assigned_to_{{ task.id }}">Assignment:</label>
@@ -239,7 +240,6 @@
           <label for="attachment_{{ task.id }}">Progress Attachment:</label>
           <input id="attachment_{{ task.id }}" type="file" name="attachment" class="form-control mb-2">
           <button type="submit" class="btn btn-sm btn-primary">Save</button>
-          <input type="hidden" name="next" value="boards">
         </form>
         {% endif %}
         {% if task.is_review_pending and task.reviewer_id == current_user_id or task.is_review_pending and is_manager %}
@@ -257,11 +257,11 @@
         </form>
         {% endif %}
         {% if is_manager or task.assigned_to_id == current_user_id %}
-        <form method="post" action="{% url 'task_page' %}" class="mt-2" onsubmit="return confirm('Delete this task item? This cannot be undone.');">
+        <form method="post" action="{% url 'boards' %}" class="mt-2" onsubmit="return confirm('Delete this task item? This cannot be undone.');">
           {% csrf_token %}
           <input type="hidden" name="action" value="delete_task">
           <input type="hidden" name="task_id" value="{{ task.id }}">
-          <input type="hidden" name="next" value="boards">
+          <input type="hidden" name="selected_sprint" value="{{ selected_sprint_id }}">
           <button type="submit" class="btn btn-sm btn-outline-danger">Delete Task Item</button>
         </form>
         {% endif %}

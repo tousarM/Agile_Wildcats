@@ -25,38 +25,6 @@ class RegisterForm(forms.Form):
         return username
 
 
-class TaskForm(forms.ModelForm):
-    assigned_to = forms.ModelChoiceField(
-        queryset=User.objects.none(),
-        required=False,
-        empty_label="Unassigned",
-        widget=forms.Select(attrs={"class": "form-control"}),
-    )
-
-    def __init__(self, *args, **kwargs):
-        can_assign = kwargs.pop("can_assign", False)
-        assignable_users = kwargs.pop("assignable_users", User.objects.none())
-        super().__init__(*args, **kwargs)
-
-        if can_assign:
-            self.fields["assigned_to"].queryset = assignable_users
-        else:
-            self.fields.pop("assigned_to")
-
-        _add_form_control_css(self.fields)
-
-    class Meta:
-        model = Task
-        fields = ["title", "description", "due_date", "status", "attachment", "assigned_to"]
-        widgets = {
-            "title": forms.TextInput(attrs={"class": "form-control", "placeholder": "Task title"}),
-            "description": forms.Textarea(attrs={"class": "form-control", "placeholder": "Task description"}),
-            "due_date": forms.DateInput(attrs={"class": "form-control", "type": "date"}),
-            "status": forms.Select(attrs={"class": "form-control"}),
-            "attachment": forms.ClearableFileInput(attrs={"class": "form-control"}),
-        }
-
-
 class BacklogItemForm(forms.ModelForm):
     assigned_to = forms.ModelChoiceField(
         queryset=User.objects.none(),

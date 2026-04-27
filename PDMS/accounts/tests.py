@@ -297,8 +297,65 @@ class TaskAndBacklogTests(TestCase):
             },
         )
 
-        self.assertRedirects(response, reverse("task_page"))
+        self.assertRedirects(response, reverse("boards"))
         self.assertFalse(Task.objects.filter(id=task.id).exists())
+
+    def test_work_alert_shows_delete_button_for_assignee(self):
+        task = self._create_task(
+            title="Alert delete access",
+            assigned_to=self.developer,
+            due_date=date(2026, 4, 26),
+        )
+
+        self.client.login(username="dev1", password="pass123")
+        response = self.client.get(reverse("profile_dashboard"))
+
+        self.assertContains(response, "Work alerts")
+        self.assertContains(response, "Delete task")
+        self.assertContains(response, 'name="action" value="delete_task"', html=False)
+        self.assertContains(response, str(task.id))
+        self.assertContains(response, "Due Apr 26, 2026")
+
+    def test_work_alert_hides_delete_button_for_non_owner_member(self):
+        self._create_task(
+            title="Alert without delete access",
+            assigned_to=self.developer,
+            due_date=date(2026, 4, 26),
+        )
+
+        self.client.login(username="dev2", password="pass123")
+        response = self.client.get(reverse("profile_dashboard"))
+
+        self.assertContains(response, "Work alerts")
+        self.assertNotContains(response, "Delete task")
+        self.assertNotContains(response, 'name="action" value="delete_task"', html=False)
+
+    def test_work_alert_banner_shows_delete_button_only_for_expired_tasks(self):
+        task = self._create_task(
+            title="Banner delete access",
+            assigned_to=self.developer,
+            due_date=date(2026, 4, 26),
+        )
+
+        self.client.login(username="dev1", password="pass123")
+        response = self.client.get(reverse("profile_dashboard"))
+
+        self.assertContains(response, "Work alert")
+        self.assertContains(response, "Delete task")
+        self.assertContains(response, str(task.id))
+
+    def test_work_alert_banner_hides_delete_button_for_non_expired_tasks(self):
+        self._create_task(
+            title="Banner no delete",
+            assigned_to=self.developer,
+            due_date=date(2026, 4, 27),
+        )
+
+        self.client.login(username="dev1", password="pass123")
+        response = self.client.get(reverse("profile_dashboard"))
+
+        self.assertContains(response, "Work alert")
+        self.assertNotContains(response, "Delete task")
 
     def test_assigned_user_can_update_progress_and_see_it_after_relogin(self):
         task = self._create_task(

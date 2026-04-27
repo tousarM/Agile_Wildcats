@@ -1,6 +1,7 @@
 from django.utils import timezone
 
 from .models import Profile, Task
+from .task_permissions import can_delete_task
 
 DEADLINE_WARNING_DAYS = 3
 
@@ -39,11 +40,14 @@ def notification_summary(request):
                 label = task.deadline_label.lower()
                 alerts.append(
                     {
+                        "task_id": task.id,
                         "title": f"Deadline reminder: {task.title}",
                         "message": f"{task.title} is {label} for {team_name} and assigned to {assignee_name}. Due date: {task.due_date.isoformat()}.",
                         "display_date": task.due_date,
                         "date_prefix": "Due",
                         "notification_type": task.deadline_state,
+                        "is_expired": task.deadline_state == "expired",
+                        "can_delete": can_delete_task(profile, task),
                     }
                 )
 
@@ -51,11 +55,14 @@ def notification_summary(request):
             requester_name = task.assigned_to.username if task.assigned_to else "A teammate"
             alerts.append(
                 {
+                    "task_id": task.id,
                     "title": f"Review requested: {task.title}",
                     "message": f"{requester_name} asked you to review {task.title}.",
                     "display_date": task.review_requested_at.date() if task.review_requested_at else today,
                     "date_prefix": "Requested",
                     "notification_type": "review_requested",
+                    "is_expired": False,
+                    "can_delete": can_delete_task(profile, task),
                 }
             )
 
@@ -63,11 +70,14 @@ def notification_summary(request):
             reviewer_name = task.reviewed_by.username if task.reviewed_by else "Your reviewer"
             alerts.append(
                 {
+                    "task_id": task.id,
                     "title": f"Review feedback: {task.title}",
                     "message": f"{reviewer_name} requested changes. {task.review_feedback}",
                     "display_date": task.reviewed_at.date() if task.reviewed_at else today,
                     "date_prefix": "Updated",
                     "notification_type": "changes_requested",
+                    "is_expired": False,
+                    "can_delete": can_delete_task(profile, task),
                 }
             )
 
@@ -75,11 +85,14 @@ def notification_summary(request):
             reviewer_name = task.reviewed_by.username if task.reviewed_by else "Your reviewer"
             alerts.append(
                 {
+                    "task_id": task.id,
                     "title": f"Review approved: {task.title}",
                     "message": f"{reviewer_name} approved this task. You can now mark it done.",
                     "display_date": task.reviewed_at.date() if task.reviewed_at else today,
                     "date_prefix": "Updated",
                     "notification_type": "approved",
+                    "is_expired": False,
+                    "can_delete": can_delete_task(profile, task),
                 }
             )
 

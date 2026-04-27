@@ -105,7 +105,6 @@
       <a href="{% url 'profile_dashboard' %}" class="nav-link-pill">Dashboard</a>
       <a href="{% url 'backlog_page' %}" class="nav-link-pill">Backlog</a>
       <a href="{% url 'sprint_board_page' %}" class="nav-link-pill">Sprints</a>
-      <a href="{% url 'task_page' %}" class="nav-link-pill">Tasks</a>
       <a href="{% url 'boards' %}" class="nav-link-pill">Board</a>
       <a href="{% url 'team_page' %}" class="nav-link-pill">Team</a>
       <div class="dropdown notification-dropdown">
@@ -124,6 +123,16 @@
                 <div>{{ notification.title }}</div>
                 <div class="small text-muted">{{ notification.message }}</div>
                 <div class="small text-muted mt-1">{{ notification.date_prefix|default:"Updated" }} {{ notification.display_date|date:"M d, Y" }}</div>
+                {% if notification.is_expired and notification.can_delete %}
+                <div class="mt-2">
+                  <form method="post" action="{% url 'task_page' %}" onsubmit="return confirm('Delete this task? This cannot be undone.');">
+                    {% csrf_token %}
+                    <input type="hidden" name="action" value="delete_task">
+                    <input type="hidden" name="task_id" value="{{ notification.task_id }}">
+                    <button type="submit" class="btn btn-sm btn-outline-danger">Delete task</button>
+                  </form>
+                </div>
+                {% endif %}
               </div>
             </li>
             {% endfor %}
@@ -153,6 +162,18 @@
       <div class="small text-muted">
         {{ notification_unread_count }} task{{ notification_unread_count|pluralize }} need attention
       </div>
+      {% with notification=recent_notifications.0 %}
+      {% if notification.is_expired and notification.can_delete %}
+      <div>
+        <form method="post" action="{% url 'task_page' %}" onsubmit="return confirm('Delete this task? This cannot be undone.');">
+          {% csrf_token %}
+          <input type="hidden" name="action" value="delete_task">
+          <input type="hidden" name="task_id" value="{{ notification.task_id }}">
+          <button type="submit" class="btn btn-sm btn-outline-danger">Delete task</button>
+        </form>
+      </div>
+      {% endif %}
+      {% endwith %}
     </div>
   </div>
   {% endif %}
