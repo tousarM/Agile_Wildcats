@@ -2,8 +2,10 @@ from urllib import request
 from django.shortcuts import get_object_or_404, render, redirect
 from django.contrib.auth.models import User
 from django.contrib.auth import authenticate, login, logout
+from django.contrib.auth.hashers import check_password as check_encoded_password
+from django.contrib.auth.password_validation import validate_password
 from django.contrib.auth.decorators import login_required
-from django.core.exceptions import PermissionDenied
+from django.core.exceptions import PermissionDenied, ValidationError as DjangoValidationError
 from django.db.models import Case, IntegerField, Q, Value, When
 from django.utils import timezone
 from .forms import (
@@ -738,6 +740,25 @@ def forgot_password(request):
         if not user.check_password(old_password):
             return render(request, 'forgot_password.html', {'error': 'Current password is incorrect.'})
 
+        profile = _get_profile(user)
+
+        if user.check_password(new_password) or any(
+            check_encoded_password(new_password, password_hash)
+            for password_hash in profile.password_history
+        ):
+            return render(
+                request,
+                'forgot_password.html',
+                {'error': 'New password cannot match a current or previously used password.'},
+            )
+
+        try:
+            validate_password(new_password, user)
+        except DjangoValidationError as exc:
+            return render(request, 'forgot_password.html', {'error': ' '.join(exc.messages)})
+
+        profile.password_history = [user.password, *profile.password_history]
+        profile.save(update_fields=["password_history"])
         user.set_password(new_password)
         user.save()
         return redirect('login')

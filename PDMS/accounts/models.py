@@ -24,6 +24,7 @@ class Profile(models.Model):
     email = models.EmailField(blank=True)
     role = models.CharField(max_length=20, choices=ROLE_CHOICES, default='member')
     team = models.ForeignKey(Team, null=True, blank=True, on_delete=models.SET_NULL)
+    password_history = models.JSONField(default=list, blank=True)
 
     def __str__(self):
         return self.user.username
