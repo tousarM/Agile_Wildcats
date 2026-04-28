@@ -1232,6 +1232,293 @@ class TaskAndBacklogTests(TestCase):
         self.assertEqual(post_response.status_code, 403)
 
 
+class AuthenticationAndConfigurationTests(TestCase):
+    def setUp(self):
+        self.team = Team.objects.create(name="Alpha")
+        self.user = User.objects.create_user(
+            username="member1",
+            email="member1@example.com",
+            password="pass123",
+        )
+        profile = self.user.profile
+        profile.name = "Member One"
+        profile.role = "member"
+        profile.team = self.team
+        profile.email = self.user.email
+        profile.save()
+        self.other_user = User.objects.create_user(
+            username="member2",
+            email="member2@example.com",
+            password="pass123",
+        )
+        other_profile = self.other_user.profile
+        other_profile.name = "Member Two"
+        other_profile.role = "member"
+        other_profile.team = self.team
+        other_profile.email = self.other_user.email
+        other_profile.save()
+
+    def _create_task(self, **overrides):
+        defaults = {
+            "title": "Sample Board Task",
+            "description": "Sample board description",
+            "status": "todo",
+            "team": self.team,
+            "priority": "medium",
+            "backlog_state": "backlog",
+            "item_type": "story",
+            "acceptance_criteria": "",
+            "assigned_to": self.user,
+            "sprint": None,
+        }
+        defaults.update(overrides)
+        return Task.objects.create(**defaults)
+
+    def test_register_view_rejects_duplicate_username(self):
+        response = self.client.post(
+            reverse("register"),
+            {
+                "username": "member1",
+                "name": "Duplicate User",
+                "email": "duplicate@example.com",
+                "password": "new-pass-123",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["form"].errors["username"][0], "Username already taken.")
+        self.assertEqual(User.objects.filter(username="member1").count(), 1)
+
+    def test_register_view_rejects_invalid_email(self):
+        response = self.client.post(
+            reverse("register"),
+            {
+                "username": "newuser",
+                "name": "New User",
+                "email": "not-an-email",
+                "password": "new-pass-123",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["form"].errors["email"][0], "Enter a valid email address.")
+        self.assertFalse(User.objects.filter(username="newuser").exists())
+
+    def test_register_view_hashes_password_before_saving_user(self):
+        response = self.client.post(
+            reverse("register"),
+            {
+                "username": "freshuser",
+                "name": "Fresh User",
+                "email": "fresh@example.com",
+                "password": "S3cure-pass-123",
+            },
+        )
+
+        self.assertRedirects(response, reverse("welcome"))
+        user = User.objects.get(username="freshuser")
+        self.assertNotEqual(user.password, "S3cure-pass-123")
+        self.assertTrue(user.password.startswith("pbkdf2_"))
+        self.assertTrue(user.check_password("S3cure-pass-123"))
+        self.assertEqual(user.profile.name, "Fresh User")
+        self.assertEqual(user.profile.email, "fresh@example.com")
+
+    def test_login_view_accepts_valid_credentials_and_sets_session(self):
+        response = self.client.post(
+            reverse("login"),
+            {
+                "username": "member1",
+                "password": "pass123",
+            },
+        )
+
+        self.assertRedirects(response, reverse("welcome"))
+        self.assertIn("_auth_user_id", self.client.session)
+
+    def test_login_view_rejects_invalid_credentials(self):
+        response = self.client.post(
+            reverse("login"),
+            {
+                "username": "member1",
+                "password": "wrong-pass",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Invalid credentials")
+        self.assertNotIn("_auth_user_id", self.client.session)
+
+    def test_logout_view_redirects_to_login_and_clears_session(self):
+        self.client.login(username="member1", password="pass123")
+
+        response = self.client.get(reverse("logout"))
+
+        self.assertRedirects(response, reverse("login"))
+        self.assertNotIn("_auth_user_id", self.client.session)
+        follow_up = self.client.get(reverse("welcome"))
+        self.assertRedirects(follow_up, f"{reverse('login')}?next={reverse('welcome')}")
+
+    def test_forgot_password_updates_password_and_invalidates_old_password(self):
+        response = self.client.post(
+            reverse("forgot_password"),
+            {
+                "username": "member1",
+                "email": "member1@example.com",
+                "old_password": "pass123",
+                "new_password": "new-pass-456",
+            },
+        )
+
+        self.assertRedirects(response, reverse("login"))
+        self.user.refresh_from_db()
+        self.assertNotEqual(self.user.password, "new-pass-456")
+        self.assertTrue(self.user.check_password("new-pass-456"))
+        self.assertFalse(self.user.check_password("pass123"))
+        self.assertFalse(self.client.login(username="member1", password="pass123"))
+        self.assertTrue(self.client.login(username="member1", password="new-pass-456"))
+
+    def test_forgot_password_rejects_reusing_current_password(self):
+        response = self.client.post(
+            reverse("forgot_password"),
+            {
+                "username": "member1",
+                "email": "member1@example.com",
+                "old_password": "pass123",
+                "new_password": "pass123",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "New password cannot match a current or previously used password.")
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.check_password("pass123"))
+
+    def test_forgot_password_rejects_reusing_a_previously_used_password(self):
+        first_reset = self.client.post(
+            reverse("forgot_password"),
+            {
+                "username": "member1",
+                "email": "member1@example.com",
+                "old_password": "pass123",
+                "new_password": "new-pass-456",
+            },
+        )
+        self.assertRedirects(first_reset, reverse("login"))
+
+        response = self.client.post(
+            reverse("forgot_password"),
+            {
+                "username": "member1",
+                "email": "member1@example.com",
+                "old_password": "new-pass-456",
+                "new_password": "pass123",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "New password cannot match a current or previously used password.")
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.check_password("new-pass-456"))
+        self.assertFalse(self.user.check_password("pass123"))
+
+    def test_forgot_password_rejects_weak_new_password(self):
+        response = self.client.post(
+            reverse("forgot_password"),
+            {
+                "username": "member1",
+                "email": "member1@example.com",
+                "old_password": "pass123",
+                "new_password": "abc",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "This password is too short")
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.check_password("pass123"))
+
+    def test_forgot_password_rejects_wrong_current_password(self):
+        response = self.client.post(
+            reverse("forgot_password"),
+            {
+                "username": "member1",
+                "email": "member1@example.com",
+                "old_password": "wrong-pass",
+                "new_password": "new-pass-456",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Current password is incorrect.")
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.check_password("pass123"))
+
+    def test_boards_page_exposes_assignee_filter_customization_controls(self):
+        self._create_task(title="Assigned work", assigned_to=self.user)
+        self._create_task(title="Unassigned work", assigned_to=None)
+
+        self.client.login(username="member1", password="pass123")
+        response = self.client.get(reverse("boards"))
+
+        self.assertContains(response, 'id="filter-assignee"', html=False)
+        self.assertContains(response, '<option value="">All members</option>', html=False)
+        self.assertContains(response, f'<option value="{self.user.username}">{self.user.username}</option>', html=False)
+        self.assertContains(response, f'<option value="{self.other_user.username}">{self.other_user.username}</option>', html=False)
+        self.assertContains(response, '<option value="__unassigned__">Unassigned</option>', html=False)
+        self.assertContains(response, 'data-assignee="member1"', html=False)
+        self.assertContains(response, 'data-assignee="__unassigned__"', html=False)
+        self.assertContains(response, "Apply Filter")
+
+    def test_profile_dashboard_displays_profile_name_and_team_name(self):
+        self.client.login(username="member1", password="pass123")
+
+        response = self.client.get(reverse("profile_dashboard"))
+
+        self.assertContains(response, "<h2>Member One's Dashboard</h2>", html=False)
+        self.assertContains(response, "<strong>Team:</strong> Alpha", html=False)
+        self.assertNotContains(response, "<strong>Team:</strong> No team yet", html=False)
+
+    @patch("accounts.models.timezone.localdate", return_value=date(2026, 4, 18))
+    def test_boards_page_includes_responsive_layout_and_task_card_styles(self, mock_localdate):
+        due_soon_task = self._create_task(
+            title="Soon card",
+            due_date=date(2026, 4, 19),
+        )
+        overdue_task = self._create_task(
+            title="Overdue card",
+            due_date=date(2026, 4, 17),
+        )
+        self.client.login(username="member1", password="pass123")
+
+        response = self.client.get(reverse("boards"))
+
+        self.assertContains(response, "@media (max-width: 850px)", html=False)
+        self.assertContains(response, ".board-wrap", html=False)
+        self.assertContains(response, ".task-card.due-soon", html=False)
+        self.assertContains(response, ".task-card.overdue", html=False)
+        self.assertContains(response, 'class="card mb-2 task-card due-soon"', html=False)
+        self.assertContains(response, 'class="card mb-2 task-card overdue"', html=False)
+        self.assertContains(response, f'data-bs-target="#modal-{due_soon_task.id}"', html=False)
+        self.assertContains(response, f'data-bs-target="#modal-{overdue_task.id}"', html=False)
+
+    def test_ci_cd_workflow_file_documents_test_and_deploy_steps(self):
+        workflow_path = (
+            Path(__file__).resolve().parents[2]
+            / ".github"
+            / "workflows"
+            / "django-pdms-ci-cd.yml"
+        )
+        workflow_text = workflow_path.read_text(encoding="utf-8")
+
+        self.assertTrue(workflow_path.exists())
+        self.assertIn("name: Django PDMS CI/CD", workflow_text)
+        self.assertIn("python manage.py migrate --noinput", workflow_text)
+        self.assertIn("python manage.py test", workflow_text)
+        self.assertIn("python manage.py collectstatic --noinput", workflow_text)
+        self.assertIn("docker build -t agilewildcats/pdms:$VERSION", workflow_text)
+        self.assertIn("kubectl rollout status deployment/pdms-deployment --timeout=120s", workflow_text)
+
+
 class NotificationTests(TestCase):
     @classmethod
     def setUpClass(cls):
