@@ -2,7 +2,7 @@
 
 Authors: Simon G. Dak, Osvaldo Estrella, Tousar Mohammed, Wesley Nguyen  
 Date : 2026-03-13
-update Date: 2026-04-22
+update Date: 2026-04-29
 
 This README provides onboarding instructions for the PDMS project. It reflects the exact structure: root → `PDMS/` project folder → `accounts/` app and nested `PDMS/` settings package. It explains the purpose of the system, setup steps, usage, and directory layout so team members and contributors can quickly get started.
 
@@ -96,7 +96,7 @@ The PDMS project uses GitHub Actions for continuous integration and deployment. 
 ### Workflow Triggers
 - Pushes to `main`
 - Pull requests targeting `main`
-- Release tags :v1.0`)
+- Release tags :v1.1`)
 - Weekly scheduled CodeQL scan
 
 ### Pipeline Steps
