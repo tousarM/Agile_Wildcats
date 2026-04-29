@@ -1,6 +1,6 @@
 # Agile Wildcats — Product Development Management System (PDMS)
 
-Authors: Simon G. Dak, Osvaldo Estrell, Tousar Mohammed, Wesley Nguyen  
+Authors: Simon G. Dak, Osvaldo Estrella, Tousar Mohammed, Wesley Nguyen  
 Date : 2026-03-13
 update Date: 2026-04-22
 
